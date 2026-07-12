@@ -1,0 +1,2651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Free Roam Flight Sim</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { width:100%; height:100%; overflow:hidden; background:#000; font-family:'Segoe UI', Arial, sans-serif; }
+  #app { position:relative; width:100vw; height:100vh; }
+  canvas { display:block; }
+
+  /* ---------- HUD ---------- */
+  #hud {
+    position:absolute; top:16px; left:16px; color:#e8f6ff;
+    text-shadow:0 0 6px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.9);
+    pointer-events:none; user-select:none;
+    background:rgba(10,20,30,0.35);
+    border:1px solid rgba(140,200,255,0.35);
+    border-radius:10px;
+    padding:12px 18px;
+    backdrop-filter: blur(2px);
+    min-width:210px;
+  }
+  #hud .row { display:flex; justify-content:space-between; font-size:15px; margin:3px 0; letter-spacing:0.5px; }
+  #hud .label { color:#8fd0ff; font-weight:600; margin-right:14px; }
+  #hud .value { font-weight:700; color:#fff; }
+  #hud .title { font-size:13px; color:#7fd4ff; letter-spacing:2px; text-transform:uppercase; margin-bottom:6px; opacity:0.85; }
+  #throttleBarWrap { width:100%; height:8px; background:rgba(255,255,255,0.15); border-radius:4px; margin-top:6px; overflow:hidden; }
+  #throttleBar { height:100%; width:0%; background:linear-gradient(90deg,#37e0ff,#37ff8f); transition:width 0.1s linear; }
+
+  #routePanel {
+    position:absolute; top:16px; left:246px; color:#fff3d6;
+    text-shadow:0 0 6px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.9);
+    pointer-events:none; user-select:none;
+    background:rgba(35,26,10,0.4);
+    border:1px solid rgba(255,200,90,0.4);
+    border-radius:10px;
+    padding:12px 18px;
+    backdrop-filter: blur(2px);
+    min-width:200px;
+  }
+  #routePanel .row { display:flex; justify-content:space-between; font-size:14px; margin:3px 0; letter-spacing:0.5px; }
+  #routePanel .label { color:#ffd479; font-weight:600; margin-right:14px; }
+  #routePanel .value { font-weight:700; color:#fff; }
+  #routePanel .title { font-size:13px; color:#ffcf6a; letter-spacing:2px; text-transform:uppercase; margin-bottom:6px; opacity:0.9; }
+
+  /* ---------- Compass ---------- */
+  #compassWrap {
+    position:absolute; top:16px; right:16px; width:150px; height:150px;
+    pointer-events:none; user-select:none;
+  }
+  #compassCircle {
+    position:absolute; inset:0; border-radius:50%;
+    background:radial-gradient(circle at 50% 40%, rgba(20,40,60,0.55), rgba(5,10,18,0.55));
+    border:1px solid rgba(140,200,255,0.4);
+    box-shadow: 0 0 18px rgba(0,0,0,0.5) inset;
+  }
+  #compassRing { position:absolute; inset:0; }
+  .compassLetter {
+    position:absolute; color:#bfe9ff; font-size:12px; font-weight:700;
+    text-shadow:0 0 5px rgba(0,0,0,0.9);
+    transform-origin: 50% 50%;
+  }
+  .compassNose {
+    position:absolute; left:50%; top:8px; width:0; height:0;
+    border-left:6px solid transparent; border-right:6px solid transparent;
+    border-bottom:10px solid #ff5050; transform:translateX(-50%);
+    filter:drop-shadow(0 0 4px rgba(255,60,60,0.8));
+  }
+  .airportMarker {
+    position:absolute; width:10px; height:10px; border-radius:50%;
+    left:50%; top:50%; margin:-5px;
+    box-shadow:0 0 6px rgba(0,0,0,0.8);
+    border:1px solid rgba(255,255,255,0.8);
+  }
+  #compassLabel {
+    position:absolute; bottom:-22px; width:100%; text-align:center;
+    font-size:11px; color:#9fd6ff; letter-spacing:1px;
+  }
+
+  /* ---------- Controls overlay ---------- */
+  #controlsOverlay {
+    position:absolute; inset:0; background:rgba(4,10,18,0.82);
+    display:flex; align-items:center; justify-content:center; z-index:50;
+  }
+  #controlsPanel {
+    background:linear-gradient(160deg, rgba(20,35,55,0.95), rgba(8,14,24,0.95));
+    border:1px solid rgba(120,190,255,0.4);
+    border-radius:14px; padding:34px 40px; max-width:480px; color:#eaf6ff;
+    box-shadow:0 0 40px rgba(60,150,255,0.25);
+  }
+  #controlsPanel h1 { font-size:22px; color:#7fe0ff; letter-spacing:1px; margin-bottom:14px; }
+  #controlsPanel .grp { margin-bottom:12px; }
+  #controlsPanel .grp b { color:#9fe8ff; }
+  #controlsPanel p { font-size:14px; line-height:1.6; color:#cfe9ff; }
+  #controlsPanel button {
+    margin-top:20px; padding:10px 22px; border:none; border-radius:8px;
+    background:linear-gradient(90deg,#37e0ff,#37ff8f); color:#031018; font-weight:700;
+    font-size:14px; cursor:pointer; letter-spacing:1px;
+  }
+  #controlsPanel button:hover { filter:brightness(1.1); }
+  #helpHint {
+    position:absolute; bottom:14px; left:16px; color:rgba(220,240,255,0.65);
+    font-size:12px; pointer-events:none; user-select:none;
+    text-shadow:0 0 6px rgba(0,0,0,0.8);
+  }
+
+  /* ---------- Crash flash ---------- */
+  #crashMsg {
+    position:absolute; top:40%; left:50%; transform:translate(-50%,-50%);
+    color:#ff5555; font-size:34px; font-weight:800; letter-spacing:3px;
+    text-shadow:0 0 20px rgba(255,0,0,0.8);
+    opacity:0; pointer-events:none; transition:opacity 0.3s ease;
+  }
+  #crashMsg.show { opacity:1; }
+
+  /* ---------- Landing quality ("butter meter") toast ---------- */
+  #landingToast {
+    position:absolute; top:30%; left:50%; transform:translate(-50%,-50%);
+    color:#ffe9a8; font-size:26px; font-weight:800; letter-spacing:2px;
+    text-shadow:0 0 16px rgba(255,190,60,0.7), 0 0 3px rgba(0,0,0,0.9);
+    opacity:0; pointer-events:none; transition:opacity 0.4s ease;
+    background:rgba(10,16,10,0.4); border-radius:10px; padding:6px 18px;
+  }
+  #landingToast.show { opacity:1; }
+
+  /* ---------- Route complete toast ---------- */
+  #routeToast {
+    position:absolute; top:22%; left:50%; transform:translate(-50%,-50%);
+    color:#9dffb0; font-size:22px; font-weight:800; letter-spacing:2px;
+    text-shadow:0 0 16px rgba(60,255,140,0.6), 0 0 3px rgba(0,0,0,0.9);
+    opacity:0; pointer-events:none; transition:opacity 0.4s ease;
+    background:rgba(8,16,10,0.4); border-radius:10px; padding:6px 18px;
+  }
+  #routeToast.show { opacity:1; }
+
+  /* ---------- Crosswind / engine failure banners ---------- */
+  #crosswindBanner {
+    position:absolute; top:14%; left:50%; transform:translate(-50%,-50%);
+    color:#bfe7ff; font-size:20px; font-weight:800; letter-spacing:2px;
+    text-shadow:0 0 16px rgba(80,180,255,0.7), 0 0 3px rgba(0,0,0,0.9);
+    opacity:0; pointer-events:none; transition:opacity 0.4s ease;
+    background:rgba(8,14,20,0.45); border-radius:10px; padding:6px 18px;
+  }
+  #crosswindBanner.show { opacity:1; }
+  #engineFailBanner {
+    position:absolute; top:20%; left:50%; transform:translate(-50%,-50%);
+    color:#ffb0a0; font-size:22px; font-weight:800; letter-spacing:2px;
+    text-shadow:0 0 18px rgba(255,60,20,0.7), 0 0 3px rgba(0,0,0,0.9);
+    opacity:0; pointer-events:none; transition:opacity 0.4s ease;
+    background:rgba(30,6,4,0.5); border-radius:10px; padding:6px 18px;
+    animation: emgPulse 1s infinite;
+  }
+  #engineFailBanner.show { opacity:1; }
+  #wingBrokenBanner {
+    position:absolute; top:26%; left:50%; transform:translate(-50%,-50%);
+    color:#ffd0a0; font-size:20px; font-weight:800; letter-spacing:2px;
+    text-shadow:0 0 16px rgba(255,120,20,0.7), 0 0 3px rgba(0,0,0,0.9);
+    opacity:0; pointer-events:none; transition:opacity 0.4s ease;
+    background:rgba(30,14,4,0.5); border-radius:10px; padding:6px 18px;
+  }
+  #wingBrokenBanner.show { opacity:1; }
+
+  /* ---------- In-flight emergency minigame ---------- */
+  #emergencyOverlay {
+    position:absolute; inset:0; z-index:60; pointer-events:none;
+    display:none; align-items:flex-end; justify-content:center;
+  }
+  #emergencyPanel {
+    pointer-events:auto;
+    margin-bottom:26%;
+    background:linear-gradient(160deg, rgba(50,10,10,0.95), rgba(15,4,4,0.97));
+    border:2px solid rgba(255,90,60,0.7);
+    border-radius:14px; padding:20px 28px; color:#ffe9e0; text-align:center;
+    box-shadow:0 0 50px rgba(255,50,0,0.35);
+    min-width:320px;
+    animation: emgPulse 1s infinite;
+  }
+  @keyframes emgPulse {
+    0%,100% { box-shadow:0 0 30px rgba(255,50,0,0.3); }
+    50% { box-shadow:0 0 55px rgba(255,80,0,0.55); }
+  }
+  #emergencyPanel h2 {
+    font-size:16px; letter-spacing:2px; color:#ff8f6a; margin-bottom:10px;
+    text-transform:uppercase;
+  }
+  #emgQuestion { font-size:15px; color:#ffd9c9; margin-bottom:10px; }
+  #emgDialRow { display:flex; align-items:center; justify-content:center; gap:16px; margin-bottom:12px; }
+  #emgValue {
+    font-size:40px; font-weight:800; color:#fff; min-width:80px;
+    background:rgba(0,0,0,0.4); border:1px solid rgba(255,140,100,0.5); border-radius:8px; padding:4px 12px;
+  }
+  .emgArrowBtn {
+    width:44px; height:44px; border-radius:8px; border:1px solid rgba(255,160,120,0.6);
+    background:linear-gradient(160deg,#3a1410,#1a0805); color:#ffcdb8; font-size:18px; font-weight:800;
+    cursor:pointer;
+  }
+  .emgArrowBtn:hover { filter:brightness(1.25); }
+  #emgHint { font-size:12px; color:#ffb89c; margin-bottom:10px; }
+  #emgTimerBarWrap { width:100%; height:10px; background:rgba(255,255,255,0.15); border-radius:5px; overflow:hidden; }
+  #emgTimerBar { height:100%; width:100%; background:linear-gradient(90deg,#ff3d1f,#ffae37); transition:width 0.1s linear; }
+
+  /* ---------- Boarding prompt ---------- */
+  #boardPrompt {
+    position:absolute; bottom:70px; left:50%; transform:translateX(-50%);
+    background:rgba(10,20,30,0.75); border:1px solid rgba(140,200,255,0.5);
+    color:#eaf9ff; padding:10px 20px; border-radius:10px; font-size:15px;
+    letter-spacing:0.5px; text-shadow:0 0 6px rgba(0,0,0,0.8);
+    display:none; pointer-events:none; user-select:none;
+  }
+  #boardPrompt b { color:#7fe0ff; }
+
+  /* ---------- Instant plane switch button ---------- */
+  #jetSwitchBtn {
+    position:absolute; bottom:14px; right:16px;
+    background:linear-gradient(90deg,#37e0ff,#37ff8f); color:#031018; font-weight:700;
+    border:none; border-radius:8px; padding:10px 18px; font-size:13px; letter-spacing:0.5px;
+    cursor:pointer; box-shadow:0 0 14px rgba(60,150,255,0.35);
+  }
+  #jetSwitchBtn:hover { filter:brightness(1.08); }
+
+  #musicToggleBtn {
+    position:absolute; bottom:14px; right:230px;
+    background:linear-gradient(90deg,#7f8ea8,#a8b6cc); color:#0a121c; font-weight:700;
+    border:none; border-radius:8px; padding:10px 18px; font-size:13px; letter-spacing:0.5px;
+    cursor:pointer; box-shadow:0 0 14px rgba(120,140,180,0.35);
+  }
+  #musicToggleBtn:hover { filter:brightness(1.08); }
+
+  /* ---------- Cockpit overlay (interior view) ---------- */
+  #cockpitFrame {
+    position:absolute; inset:0; pointer-events:none; display:none;
+  }
+  #cockpitFrame .glassEdge {
+    position:absolute; background:rgba(10,14,20,0.9);
+  }
+  #cockpitFrame .top { top:0; left:0; right:0; height:14%; border-bottom:3px solid rgba(255,255,255,0.08); }
+  #cockpitFrame .bottom { bottom:0; left:0; right:0; height:22%; border-top:3px solid rgba(255,255,255,0.15);
+    background:linear-gradient(180deg, rgba(20,24,30,0.92), rgba(5,6,9,0.97)); }
+  #cockpitFrame .left { top:0; bottom:0; left:0; width:8%; }
+  #cockpitFrame .right { top:0; bottom:0; right:0; width:8%; }
+  #cockpitFrame .pillar { position:absolute; top:0; width:2.5%; height:40%; background:rgba(10,14,20,0.9); }
+  #cockpitFrame .pillarL { left:22%; transform:skewX(-6deg); }
+  #cockpitFrame .pillarR { right:22%; transform:skewX(6deg); }
+  #dashGauges {
+    position:absolute; bottom:2%; left:10%; right:10%; height:18%;
+    display:flex; justify-content:space-around; align-items:center;
+  }
+  .gauge {
+    width:80px; height:80px; border-radius:50%;
+    background:radial-gradient(circle at 40% 35%, #2a3340, #0c1015);
+    border:3px solid #3a4756; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    color:#7fe0ff; font-size:12px; font-weight:700; box-shadow:0 0 10px rgba(0,0,0,0.6) inset;
+  }
+  .gauge span.big { font-size:16px; color:#fff; }
+  #stickHint { position:absolute; bottom:1%; left:50%; transform:translateX(-50%); color:#5b6d7d; font-size:10px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="hud">
+    <div class="title">Flight Status</div>
+    <div class="row"><span class="label">Speed</span><span class="value" id="hudSpeed">0 kt</span></div>
+    <div class="row"><span class="label">Altitude</span><span class="value" id="hudAlt">0 m</span></div>
+    <div class="row"><span class="label">Throttle</span><span class="value" id="hudThrottle">0%</span></div>
+    <div id="throttleBarWrap"><div id="throttleBar"></div></div>
+    <div class="row" style="margin-top:8px;"><span class="label">Camera</span><span class="value" id="hudCamera">Exterior</span></div>
+    <div class="row"><span class="label">Aircraft</span><span class="value" id="hudModel">Prop Plane</span></div>
+  </div>
+
+  <div id="routePanel">
+    <div class="title">★ Current Route</div>
+    <div class="row"><span class="label">Destination</span><span class="value" id="hudRouteDest">—</span></div>
+    <div class="row"><span class="label">Distance</span><span class="value" id="hudRouteDist">—</span></div>
+    <div class="row"><span class="label">Bearing</span><span class="value" id="hudRouteBearing">—</span></div>
+  </div>
+
+  <div id="compassWrap">
+    <div id="compassCircle">
+      <div class="compassNose"></div>
+      <div id="compassRing"></div>
+    </div>
+    <div id="compassLabel">NEAREST FIELDS</div>
+  </div>
+
+  <div id="crashMsg">CRASHED — RESETTING</div>
+
+  <div id="landingToast"></div>
+  <div id="routeToast"></div>
+  <div id="crosswindBanner">CROSSWIND — BANK INTO IT TO STABILIZE</div>
+  <div id="engineFailBanner">ENGINE FAILURE — FIND SOMEWHERE TO LAND NOW</div>
+  <div id="wingBrokenBanner">WING DAMAGED — EMERGENCY LANDING REQUIRED</div>
+
+  <div id="emergencyOverlay">
+    <div id="emergencyPanel">
+      <h2>⚠ In-Flight Malfunction ⚠</h2>
+      <div id="emgQuestion">PRESSURE TARGET: 0 = ?</div>
+      <div id="emgDialRow">
+        <button class="emgArrowBtn" id="emgLeftBtn">◀ -5</button>
+        <button class="emgArrowBtn" id="emgDownBtn">▼ -1</button>
+        <div id="emgValue">0</div>
+        <button class="emgArrowBtn" id="emgUpBtn">▲ +1</button>
+        <button class="emgArrowBtn" id="emgRightBtn">+5 ▶</button>
+      </div>
+      <div id="emgHint">Solve the math, then use ↑ / ↓ (±1) and ← / → (±5) — or click — to match the gauge before time runs out!</div>
+      <div id="emgTimerBarWrap"><div id="emgTimerBar"></div></div>
+    </div>
+  </div>
+
+  <div id="boardPrompt"></div>
+
+  <button id="jetSwitchBtn">✈ Switch to Passenger Jet</button>
+  <button id="musicToggleBtn">🔊 Music On</button>
+
+  <div id="helpHint">Press <b>H</b> for controls · <b>B</b> to board/exit the airliner</div>
+
+  <div id="cockpitFrame">
+    <div class="glassEdge top"></div>
+    <div class="glassEdge bottom"></div>
+    <div class="glassEdge left"></div>
+    <div class="glassEdge right"></div>
+    <div class="glassEdge pillar pillarL"></div>
+    <div class="glassEdge pillar pillarR"></div>
+    <div id="dashGauges">
+      <div class="gauge"><span class="big" id="gaugeSpeed">0</span><span>KT</span></div>
+      <div class="gauge"><span class="big" id="gaugeAlt">0</span><span>ALT M</span></div>
+      <div class="gauge"><span class="big" id="gaugeThr">0</span><span>THR %</span></div>
+    </div>
+    <div id="stickHint">COCKPIT VIEW — PRESS C TO EXIT</div>
+  </div>
+
+  <div id="controlsOverlay">
+    <div id="controlsPanel">
+      <h1>✈ FREE ROAM FLIGHT</h1>
+      <div class="grp"><b>W / S</b> — Pitch (nose down / up)</div>
+      <div class="grp"><b>A / D</b> — Turn left / right (steering)</div>
+      <div class="grp"><b>Q / E</b> — Roll (bank left / right)</div>
+      <div class="grp"><b>R / F or Shift / Ctrl</b> — Throttle up / down (hold F/Ctrl past idle to reverse while taxiing)</div>
+      <div class="grp"><b>C</b> — Toggle Cockpit / Chase Camera</div>
+      <div class="grp"><b>B</b> — Board / exit the big passenger jet at any terminal gate</div>
+      <div class="grp"><b>✈ Switch to Passenger Jet button</b> — instantly swap planes from anywhere</div>
+      <div class="grp"><b>H</b> — Toggle this help</div>
+      <p>Take off from the home runway, keep your speed above stall or you'll sink, and explore the three airfields scattered across the island. Taxi up to a terminal gate and press B (or use the on-screen button) to swap into the passenger jet. Watch out — there's roughly a 1-in-7 chance any takeoff triggers an in-flight malfunction: you'll be thrown into the cockpit view and have to solve a quick math problem by dialing a gauge to the right number with the arrow keys before time runs out, or you'll crash. Hitting the ground (or failing that repair) will reset you at the home airport in a ball of fire!</p>
+      <button id="startBtn">START FLYING</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* =========================================================================
+   FREE ROAM AIRPLANE GAME — single file Three.js implementation
+   ========================================================================= */
+
+// ---------------------------------------------------------------------
+// Airport definitions (position, orientation, color scheme)
+// ---------------------------------------------------------------------
+const AIRPORTS = [
+  { name:"Home Field",   pos:new THREE.Vector3(0,0,0),         rotY:0,            primary:0xd94444, secondary:0xffffff, id:0, hub:true },
+  { name:"Blue Mesa",    pos:new THREE.Vector3(1500,0,-1100),  rotY:Math.PI/3,    primary:0x3f7fdc, secondary:0xffffff, id:1 },
+  { name:"Green Valley", pos:new THREE.Vector3(-1350,0,1200),  rotY:-Math.PI/4.2, primary:0x3fbf6f, secondary:0xffe066, id:2 },
+];
+const AIRPORT_SCALE = 1.8; // overall size multiplier for runways, terminals, taxiways, towers, etc.
+const AIRPORT_FLAT_RADIUS = 190 * AIRPORT_SCALE;   // fully flat (runway sits exactly on this) within this distance
+const AIRPORT_BLEND_RADIUS = 340 * AIRPORT_SCALE;  // blends back to natural terrain by this distance
+const GATE_OFFSETS = [-84,-42,0,42,84];  // local Z offsets of the 5 gates along each airport's apron
+const PRIMARY_GATE_INDEX = 2;            // the center gate gets the full jet bridge + parked airliner
+
+// ---------------------------------------------------------------------
+// World geography — a city near each airport (with an access road), a river
+// cutting diagonally across the map (well clear of every airport/city, with
+// two landmark bridges), and open ocean past the edge of the land.
+// ---------------------------------------------------------------------
+const CITY_OFFSET_MAG = 900;
+const CITIES = AIRPORTS.map(a=>{
+  const dir = new THREE.Vector2(a.pos.x, a.pos.z);
+  if(dir.lengthSq() < 1) dir.set(0.7071,-0.7071); else dir.normalize();
+  return {
+    x: a.pos.x + dir.x*CITY_OFFSET_MAG,
+    z: a.pos.z + dir.y*CITY_OFFSET_MAG,
+    flat: 110, blend: 220,
+    name: a.name.split(' ')[0] + ' City'
+  };
+});
+const ROADS = AIRPORTS.map((a,i)=>({
+  x1:a.pos.x, z1:a.pos.z, x2:CITIES[i].x, z2:CITIES[i].z, halfWidth:14
+}));
+
+// River: a diagonal path (NE-SW) offset well away from every airport/city, with a
+// gentle sine wiggle so it doesn't read as a perfectly straight canal.
+const RIVER_ALONG = { x:0.7071, z:0.7071 };   // direction the river flows
+const RIVER_PERP   = { x:0.7071, z:-0.7071 }; // perpendicular to the flow (bank-to-bank)
+const RIVER_PERP_OFFSET = 1500;
+const RIVER_WIGGLE_AMP = 220;
+const RIVER_WIGGLE_FREQ = 0.0013;
+const RIVER_WIDTH = 45;   // half-width of the actual water channel
+const RIVER_BLEND = 110;  // additional distance over which the bank blends to natural terrain
+const RIVER_LEVEL = -6;   // riverbed height
+const RIVER_S_MIN = -2600, RIVER_S_MAX = 2600, RIVER_S_STEP = 60;
+function riverPointAt(s){
+  const perpAmt = RIVER_PERP_OFFSET + RIVER_WIGGLE_AMP*Math.sin(s*RIVER_WIGGLE_FREQ);
+  return { x: RIVER_ALONG.x*s + RIVER_PERP.x*perpAmt, z: RIVER_ALONG.z*s + RIVER_PERP.z*perpAmt };
+}
+const RIVER_POINTS = [];
+for(let s=RIVER_S_MIN; s<=RIVER_S_MAX; s+=RIVER_S_STEP) RIVER_POINTS.push(riverPointAt(s));
+function riverDist(x,z){
+  let best = Infinity;
+  for(let i=0;i<RIVER_POINTS.length;i++){
+    const p = RIVER_POINTS[i];
+    const dx=x-p.x, dz=z-p.z;
+    const d = dx*dx+dz*dz;
+    if(d<best) best=d;
+  }
+  return Math.sqrt(best);
+}
+
+// Ocean: open water past the edge of the land, blending down from natural terrain.
+const OCEAN_START = 2750;
+const OCEAN_END = 3500;
+const SEA_LEVEL = -10;
+
+function distToSegment(px,pz,x1,z1,x2,z2){
+  const dx=x2-x1, dz=z2-z1;
+  const lenSq = dx*dx+dz*dz;
+  let t = lenSq>0 ? ((px-x1)*dx+(pz-z1)*dz)/lenSq : 0;
+  t = Math.max(0,Math.min(1,t));
+  const cx=x1+t*dx, cz=z1+t*dz;
+  return Math.hypot(px-cx,pz-cz);
+}
+
+// Is this point open water (river channel or open ocean)? Used to allow/require special
+// handling for water landings.
+function isOverWater(x,z){
+  if(riverDist(x,z) < RIVER_WIDTH) return true;
+  if(Math.hypot(x,z) > OCEAN_START) return true;
+  return false;
+}
+
+// ---------------------------------------------------------------------
+// Terrain height function (also used for collision + airport flattening)
+// ---------------------------------------------------------------------
+function baseNoise(x, z){
+  return Math.sin(x*0.004)*7 + Math.cos(z*0.0037)*7 +
+         Math.sin((x*0.0016)+(z*0.0021))*14 +
+         Math.sin(x*0.011)*1.4 + Math.cos(z*0.013)*1.4;
+}
+function heightAt(x, z){
+  let h = baseNoise(x,z);
+  let locked = false; // true once a flat feature (airport/city/road) has fully claimed this point
+
+  for(let i=0;i<AIRPORTS.length;i++){
+    const a = AIRPORTS[i];
+    const dx = x-a.pos.x, dz = z-a.pos.z;
+    const d = Math.sqrt(dx*dx+dz*dz);
+    if(d < AIRPORT_FLAT_RADIUS){
+      h = 0; locked = true; // dead flat under and around the runway/buildings
+    } else if(d < AIRPORT_BLEND_RADIUS){
+      let t = (d - AIRPORT_FLAT_RADIUS) / (AIRPORT_BLEND_RADIUS - AIRPORT_FLAT_RADIUS);
+      t = t*t*(3-2*t); // smoothstep back up to natural terrain
+      h *= t; locked = true;
+    }
+  }
+
+  for(let i=0;i<CITIES.length;i++){
+    const c = CITIES[i];
+    const d = Math.hypot(x-c.x, z-c.z);
+    if(d < c.flat){ h = 0; locked = true; }
+    else if(d < c.flat+c.blend){
+      let t = (d-c.flat)/c.blend; t = t*t*(3-2*t);
+      h *= t; locked = true;
+    }
+  }
+
+  for(let i=0;i<ROADS.length;i++){
+    const r = ROADS[i];
+    const d = distToSegment(x,z,r.x1,r.z1,r.x2,r.z2);
+    if(d < r.halfWidth){ h = 0; locked = true; }
+    else if(d < r.halfWidth+60){
+      let t = (d-r.halfWidth)/60; t = t*t*(3-2*t);
+      h *= t; locked = true;
+    }
+  }
+
+  // River — carves a channel with a smooth bank, regardless of other features (the path is
+  // routed clear of every airport/city so this shouldn't conflict with them in practice).
+  const rd = riverDist(x,z);
+  if(rd < RIVER_WIDTH){
+    h = RIVER_LEVEL; locked = true;
+  } else if(rd < RIVER_WIDTH+RIVER_BLEND){
+    let t = (rd-RIVER_WIDTH)/RIVER_BLEND; t = t*t*(3-2*t);
+    h = h*t + RIVER_LEVEL*(1-t); locked = true;
+  }
+
+  // Ocean — natural terrain slopes down to the sea past the edge of the land. Skipped
+  // wherever a flat feature (airport/city/road) has already claimed this point, so a
+  // settlement near the map edge never gets dragged underwater.
+  if(!locked){
+    const distC = Math.hypot(x,z);
+    if(distC > OCEAN_START){
+      let t = (distC-OCEAN_START)/(OCEAN_END-OCEAN_START);
+      t = Math.min(1,t); t = t*t*(3-2*t);
+      h = h*(1-t) + (SEA_LEVEL-4)*t;
+    }
+  }
+
+  return h;
+}
+
+// ---------------------------------------------------------------------
+// Renderer / Scene / Camera
+// ---------------------------------------------------------------------
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+
+// Gradient sky via canvas texture — the canvas/ctx are kept around so the day/night cycle
+// can redraw the gradient in place each frame instead of allocating a new texture.
+let skyCanvas, skyCtx, skyTexture;
+function makeSkyTexture(){
+  skyCanvas = document.createElement('canvas');
+  skyCanvas.width = 2; skyCanvas.height = 256;
+  skyCtx = skyCanvas.getContext('2d');
+  skyTexture = new THREE.CanvasTexture(skyCanvas);
+  skyTexture.magFilter = THREE.LinearFilter;
+  return skyTexture;
+}
+scene.background = makeSkyTexture();
+scene.fog = new THREE.Fog(0xbfe3f5, 400, 3200);
+
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 5000);
+camera.position.set(0,10,20);
+
+window.addEventListener('resize', ()=>{
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ---------------------------------------------------------------------
+// Lighting
+// ---------------------------------------------------------------------
+const ambient = new THREE.HemisphereLight(0xdcefff, 0x39492f, 0.75);
+scene.add(ambient);
+
+const sun = new THREE.DirectionalLight(0xfff6e0, 1.05);
+sun.position.set(200,300,150);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.left = -300;
+sun.shadow.camera.right = 300;
+sun.shadow.camera.top = 300;
+sun.shadow.camera.bottom = -300;
+sun.shadow.camera.near = 10;
+sun.shadow.camera.far = 900;
+sun.shadow.bias = -0.0015;
+scene.add(sun);
+scene.add(sun.target);
+
+// ---------------------------------------------------------------------
+// Day/night cycle
+// ---------------------------------------------------------------------
+const DAY_LENGTH = 300; // seconds for one full day/night cycle
+let dayTime = 0.27;     // 0..1, fraction of the way through the cycle (starts mid-morning)
+let dayFactor = 1;      // 0 = full night, 1 = full day — read by nav-light logic elsewhere
+const SKY_NIGHT_TOP = [4,7,18],  SKY_NIGHT_BOT = [8,14,28];
+const SKY_DAY_TOP   = [30,79,143], SKY_DAY_BOT = [238,247,234];
+const SKY_DUSK_BOT  = [255,140,90];
+function lerpCh(a,b,t){ return Math.round(a+(b-a)*t); }
+function lerpColor(a,b,t){ return [lerpCh(a[0],b[0],t), lerpCh(a[1],b[1],t), lerpCh(a[2],b[2],t)]; }
+function rgbStr(c){ return 'rgb('+c[0]+','+c[1]+','+c[2]+')'; }
+
+function updateDayNight(dt){
+  dayTime = (dayTime + dt/DAY_LENGTH) % 1;
+  const angle = dayTime * Math.PI * 2;
+  const sunHeight = Math.sin(angle); // -1 (midnight) .. 1 (noon)
+  dayFactor = clamp01((sunHeight + 0.12) / 0.35); // smooth day<->night transition around the horizon
+
+  const top = lerpColor(SKY_NIGHT_TOP, SKY_DAY_TOP, dayFactor);
+  let bot = lerpColor(SKY_NIGHT_BOT, SKY_DAY_BOT, dayFactor);
+  // Warm dusk/dawn tint near the horizon while the sun is close to it
+  const duskAmt = clamp01(1 - Math.abs(dayFactor-0.5)*2.6);
+  bot = lerpColor(bot, SKY_DUSK_BOT, duskAmt*0.55);
+
+  skyCtx.clearRect(0,0,2,256);
+  const grad = skyCtx.createLinearGradient(0,0,0,256);
+  grad.addColorStop(0.0, rgbStr(top));
+  grad.addColorStop(0.55, rgbStr(lerpColor(top,bot,0.5)));
+  grad.addColorStop(1.0, rgbStr(bot));
+  skyCtx.fillStyle = grad;
+  skyCtx.fillRect(0,0,2,256);
+  skyTexture.needsUpdate = true;
+
+  scene.fog.color.setRGB(bot[0]/255, bot[1]/255, bot[2]/255);
+  ambient.intensity = lerp(0.2, 0.75, dayFactor);
+  sun.intensity = lerp(0.04, 1.05, dayFactor);
+  sun.color.setRGB(1, lerp(0.55,0.96,dayFactor), lerp(0.4,0.88,dayFactor));
+
+  // Sun position swings across the sky; kept centered on the plane (updateSunFollow) so the
+  // shadow frustum stays tight, but its height now tracks the time of day.
+  const height = 340 * Math.max(sunHeight, 0.05);
+  sunFollowHeight = Math.max(60, height);
+}
+let sunFollowHeight = 300;
+
+// ---------------------------------------------------------------------
+// Terrain
+// ---------------------------------------------------------------------
+const groundGeo = new THREE.PlaneGeometry(7000,7000,180,180);
+groundGeo.rotateX(-Math.PI/2);
+{
+  const pos = groundGeo.attributes.position;
+  for(let i=0;i<pos.count;i++){
+    const x = pos.getX(i), z = pos.getZ(i);
+    pos.setY(i, heightAt(x,z));
+  }
+  groundGeo.computeVertexNormals();
+}
+const groundMat = new THREE.MeshStandardMaterial({ color:0x5f9a4c, flatShading:true, roughness:1 });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.receiveShadow = true;
+scene.add(ground);
+
+// Scatter low-poly trees using instancing (avoid airport zones)
+(function scatterTrees(){
+  const count = 500;
+  const trunkGeo = new THREE.CylinderGeometry(0.4,0.5,3,5);
+  const trunkMat = new THREE.MeshStandardMaterial({ color:0x6b4a2f, flatShading:true });
+  const leafGeo = new THREE.ConeGeometry(2.4,5,6);
+  const leafMat = new THREE.MeshStandardMaterial({ color:0x2f7d3c, flatShading:true });
+  const trunkMesh = new THREE.InstancedMesh(trunkGeo, trunkMat, count);
+  const leafMesh = new THREE.InstancedMesh(leafGeo, leafMat, count);
+  trunkMesh.castShadow = true; leafMesh.castShadow = true;
+  const dummy = new THREE.Object3D();
+  let placed = 0, attempts = 0;
+  while(placed < count && attempts < count*8){
+    attempts++;
+    const x = (Math.random()-0.5)*6400;
+    const z = (Math.random()-0.5)*6400;
+    let tooClose = false;
+    for(const a of AIRPORTS){
+      if(Math.hypot(x-a.pos.x, z-a.pos.z) < AIRPORT_BLEND_RADIUS+40){ tooClose = true; break; }
+    }
+    if(tooClose) continue;
+    if(riverDist(x,z) < RIVER_WIDTH+RIVER_BLEND+20) continue;
+    if(Math.hypot(x,z) > OCEAN_START-30) continue;
+    const y = heightAt(x,z);
+    dummy.position.set(x, y+1.5, z);
+    dummy.rotation.y = Math.random()*Math.PI*2;
+    const s = 0.7 + Math.random()*0.8;
+    dummy.scale.set(s,s,s);
+    dummy.updateMatrix();
+    trunkMesh.setMatrixAt(placed, dummy.matrix);
+    dummy.position.y = y + 3.6*s;
+    dummy.updateMatrix();
+    leafMesh.setMatrixAt(placed, dummy.matrix);
+    placed++;
+  }
+  scene.add(trunkMesh, leafMesh);
+})();
+
+// ---------------------------------------------------------------------
+// Ocean — a large, gently undulating water plane past the edge of the land.
+// The terrain itself already slopes down below sea level out there (see
+// heightAt), so this simply becomes visible wherever the ground dips under it.
+// ---------------------------------------------------------------------
+// Solid obstacles the plane can crash into: hangars, towers, the terminal, parked
+// airliners, city buildings, houses, and bridges. Each entry is {pos (world Vector3),
+// radius, gateRef (or null)}. gateRef-tagged obstacles (parked airliners) are ignored
+// while that gate is your assigned route, since the decorative plane there is hidden —
+// you're the one parking there instead. Declared early so the city/house/bridge scenery
+// below can register obstacles directly, ahead of the airport ones further down.
+const obstacles = [];
+
+function buildOcean(){
+  const size = 8200;
+  const geo = new THREE.PlaneGeometry(size, size, 56, 56);
+  geo.rotateX(-Math.PI/2);
+  const pos = geo.attributes.position;
+  for(let i=0;i<pos.count;i++){
+    const x = pos.getX(i), z = pos.getZ(i);
+    const wave = Math.sin(x*0.01+z*0.013)*1.4 + Math.cos(x*0.017-z*0.009)*1.0;
+    pos.setY(i, SEA_LEVEL - 1 + wave);
+  }
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshStandardMaterial({ color:0x1f6fa8, transparent:true, opacity:0.92, roughness:0.15, metalness:0.3 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.receiveShadow = true;
+  return mesh;
+}
+scene.add(buildOcean());
+
+// ---------------------------------------------------------------------
+// River — a water ribbon following the carved channel from heightAt, plus two
+// landmark bridges crossing it.
+// ---------------------------------------------------------------------
+function buildRiverWater(){
+  const positions = [];
+  const indices = [];
+  const waterY = RIVER_LEVEL + 0.5;
+  for(let i=0;i<RIVER_POINTS.length;i++){
+    const p = RIVER_POINTS[i];
+    positions.push(p.x + RIVER_PERP.x*RIVER_WIDTH, waterY, p.z + RIVER_PERP.z*RIVER_WIDTH);
+    positions.push(p.x - RIVER_PERP.x*RIVER_WIDTH, waterY, p.z - RIVER_PERP.z*RIVER_WIDTH);
+  }
+  for(let i=0;i<RIVER_POINTS.length-1;i++){
+    const a=i*2, b=i*2+1, c=(i+1)*2, d=(i+1)*2+1;
+    indices.push(a,b,c, b,d,c);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshStandardMaterial({ color:0x2f7cb0, transparent:true, opacity:0.88, roughness:0.2, metalness:0.25 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.receiveShadow = true;
+  return mesh;
+}
+scene.add(buildRiverWater());
+
+function buildBridge(style){
+  const g = new THREE.Group();
+  const deckLen = RIVER_WIDTH*2 + 50;
+  const halfTower = RIVER_WIDTH*0.55;
+  if(style === 'goldengate'){
+    const towerMat = new THREE.MeshStandardMaterial({ color:0xC1440E, flatShading:true });
+    const deckMat = new THREE.MeshStandardMaterial({ color:0x3a3f45, flatShading:true });
+    const cableMat = new THREE.MeshStandardMaterial({ color:0x2a2a2a, flatShading:true });
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(deckLen, 1.4, 15), deckMat);
+    deck.position.y = 14;
+    deck.receiveShadow = true;
+    g.add(deck);
+    [-1,1].forEach(side=>{
+      const tower = new THREE.Mesh(new THREE.BoxGeometry(4,70,11), towerMat);
+      tower.position.set(side*halfTower, 35, 0);
+      tower.castShadow = true;
+      g.add(tower);
+      const brace = new THREE.Mesh(new THREE.BoxGeometry(4,3,12), towerMat);
+      brace.position.set(side*halfTower, 56, 0);
+      g.add(brace);
+      const cable = new THREE.Mesh(new THREE.BoxGeometry(0.6,0.6,deckLen*0.42), cableMat);
+      cable.position.set(side*halfTower, 44, 0);
+      cable.rotation.z = 0.5;
+      g.add(cable);
+    });
+  } else {
+    const stoneMat = new THREE.MeshStandardMaterial({ color:0xb9ab8d, flatShading:true });
+    const accentMat = new THREE.MeshStandardMaterial({ color:0x5f7a8c, flatShading:true });
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(deckLen, 1.4, 15), accentMat);
+    deck.position.y = 10;
+    deck.receiveShadow = true;
+    g.add(deck);
+    [-1,1].forEach(side=>{
+      const tower = new THREE.Mesh(new THREE.BoxGeometry(10,34,15), stoneMat);
+      tower.position.set(side*halfTower, 17, 0);
+      tower.castShadow = true;
+      g.add(tower);
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(8,6,4), accentMat);
+      roof.position.set(side*halfTower, 37, 0);
+      roof.rotation.y = Math.PI/4;
+      g.add(roof);
+    });
+    const walk = new THREE.Mesh(new THREE.BoxGeometry(deckLen*0.42, 1.2, 6.5), stoneMat);
+    walk.position.y = 28;
+    g.add(walk);
+  }
+  return g;
+}
+const BRIDGE_ANGLE = Math.atan2(RIVER_PERP.x, RIVER_PERP.z);
+function placeBridge(s, style){
+  const p = riverPointAt(s);
+  const b = buildBridge(style);
+  b.position.set(p.x, RIVER_LEVEL, p.z);
+  b.rotation.y = BRIDGE_ANGLE;
+  scene.add(b);
+  const deckLen = RIVER_WIDTH*2 + 50;
+  const topHeight = (style === 'goldengate') ? (RIVER_LEVEL+74) : (RIVER_LEVEL+40);
+  obstacles.push({
+    pos: new THREE.Vector3(p.x, 0, p.z),
+    radius: deckLen/2 + 3,
+    vertical: { minY: RIVER_LEVEL, maxY: topHeight },
+    gateRef: null
+  });
+}
+placeBridge(-700, 'goldengate');
+placeBridge(900, 'towerbridge');
+
+// ---------------------------------------------------------------------
+// Cities — a cluster of low-poly towers near each airport, connected back to
+// it by a road, with houses scattered along the way.
+// ---------------------------------------------------------------------
+function buildCity(city, accentColor){
+  const g = new THREE.Group();
+  const gridN = 5, spacing = 32;
+  for(let ix=0; ix<gridN; ix++){
+    for(let iz=0; iz<gridN; iz++){
+      if(Math.random() < 0.15) continue; // leave a few gaps/plazas
+      const w = 13+Math.random()*9, h = 26+Math.random()*105, d = 13+Math.random()*9;
+      const isAccent = Math.random() < 0.12;
+      const shade = 0x70 + Math.floor(Math.random()*0x30);
+      const mat = new THREE.MeshStandardMaterial({
+        color: isAccent ? accentColor : ((shade<<16)|((shade+10)<<8)|(shade+24)),
+        flatShading:true
+      });
+      const bld = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat);
+      const x = (ix-(gridN-1)/2)*spacing + (Math.random()-0.5)*8;
+      const z = (iz-(gridN-1)/2)*spacing + (Math.random()-0.5)*8;
+      bld.position.set(x, h/2, z);
+      bld.castShadow = true; bld.receiveShadow = true;
+      g.add(bld);
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(w*1.03,1.1,d*1.03), new THREE.MeshStandardMaterial({color:accentColor, flatShading:true}));
+      cap.position.set(x, h+0.55, z);
+      g.add(cap);
+      // Solid obstacle — a vertical cylinder matching the tower's footprint/height, so a
+      // plane can clip its upper floors, not just a small sphere near its base.
+      obstacles.push({
+        pos: new THREE.Vector3(city.x+x, 0, city.z+z),
+        radius: Math.max(w,d)/2 + 1.5,
+        vertical: { minY: 0, maxY: h+2 },
+        gateRef: null
+      });
+    }
+  }
+  g.position.set(city.x, 0, city.z);
+  return g;
+}
+CITIES.forEach((c,i)=> scene.add(buildCity(c, AIRPORTS[i].primary)));
+
+function buildRoadScenery(r){
+  const dx=r.x2-r.x1, dz=r.z2-r.z1;
+  const len = Math.hypot(dx,dz);
+  const g = new THREE.Group();
+  const roadMat = new THREE.MeshStandardMaterial({ color:0x35383d, flatShading:true });
+  const road = new THREE.Mesh(new THREE.BoxGeometry(r.halfWidth*2, 0.3, len), roadMat);
+  road.position.y = 0.15;
+  road.receiveShadow = true;
+  g.add(road);
+  const dashMat = new THREE.MeshStandardMaterial({ color:0xffe066 });
+  const dashCount = Math.floor(len/28);
+  for(let i=0;i<dashCount;i++){
+    const dash = new THREE.Mesh(new THREE.BoxGeometry(0.8,0.32,10), dashMat);
+    dash.position.set(0, 0.2, -len/2 + i*28 + 14);
+    g.add(dash);
+  }
+  g.rotation.y = Math.atan2(dx,dz);
+  g.position.set((r.x1+r.x2)/2, 0, (r.z1+r.z2)/2);
+  return g;
+}
+ROADS.forEach(r=> scene.add(buildRoadScenery(r)));
+
+function buildHouse(roofColor){
+  const g = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.BoxGeometry(8,5,9), new THREE.MeshStandardMaterial({color:0xe8dcc8, flatShading:true}));
+  base.position.y = 2.5;
+  base.castShadow = true; base.receiveShadow = true;
+  g.add(base);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(6.8,3.6,4), new THREE.MeshStandardMaterial({color:roofColor, flatShading:true}));
+  roof.position.y = 5+1.8;
+  roof.rotation.y = Math.PI/4;
+  roof.castShadow = true;
+  g.add(roof);
+  return g;
+}
+function scatterHousesAlongRoad(r, roofColor, count){
+  const dx=r.x2-r.x1, dz=r.z2-r.z1;
+  const len = Math.hypot(dx,dz);
+  const ndx=dx/len, ndz=dz/len;
+  const pdx=-ndz, pdz=ndx; // perpendicular to the road
+  const roadAngle = Math.atan2(ndx,ndz);
+  for(let i=0;i<count;i++){
+    const t = 0.16 + Math.random()*0.66;
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const lateral = r.halfWidth + 20 + Math.random()*40;
+    const px = r.x1 + ndx*len*t + pdx*lateral*side;
+    const pz = r.z1 + ndz*len*t + pdz*lateral*side;
+    const house = buildHouse(roofColor);
+    const houseY = heightAt(px,pz);
+    house.position.set(px, houseY, pz);
+    house.rotation.y = roadAngle + (side>0 ? Math.PI/2 : -Math.PI/2);
+    scene.add(house);
+    obstacles.push({
+      pos: new THREE.Vector3(px, houseY, pz),
+      radius: 6.5,
+      vertical: { minY: houseY, maxY: houseY+9 },
+      gateRef: null
+    });
+
+    // Short driveway stub connecting the house back to the main road
+    const roadEdge = r.halfWidth;
+    const stubLen = (lateral - roadEdge) + 4;
+    const stub = new THREE.Mesh(new THREE.BoxGeometry(3.5,0.25,stubLen), new THREE.MeshStandardMaterial({color:0x4a4d52, flatShading:true}));
+    const midLateral = roadEdge + stubLen/2;
+    stub.position.set(r.x1 + ndx*len*t + pdx*midLateral*side, 0.16, r.z1 + ndz*len*t + pdz*midLateral*side);
+    stub.rotation.y = roadAngle + Math.PI/2;
+    scene.add(stub);
+  }
+}
+ROADS.forEach((r,i)=> scatterHousesAlongRoad(r, AIRPORTS[i].secondary, 10));
+
+// Simple drifting clouds
+const cloudGroup = new THREE.Group();
+(function makeClouds(){
+  const mat = new THREE.MeshStandardMaterial({ color:0xffffff, flatShading:true, roughness:1 });
+  for(let i=0;i<24;i++){
+    const cluster = new THREE.Group();
+    const puffs = 3 + Math.floor(Math.random()*3);
+    for(let p=0;p<puffs;p++){
+      const g = new THREE.SphereGeometry(8+Math.random()*8, 6,5);
+      const m = new THREE.Mesh(g, mat);
+      m.position.set((Math.random()-0.5)*22,(Math.random()-0.5)*6,(Math.random()-0.5)*22);
+      cluster.add(m);
+    }
+    cluster.position.set((Math.random()-0.5)*3600, 160+Math.random()*140, (Math.random()-0.5)*3600);
+    cluster.userData.speed = 2+Math.random()*3;
+    cloudGroup.add(cluster);
+  }
+  scene.add(cloudGroup);
+})();
+
+// ---------------------------------------------------------------------
+// Airport builder
+// ---------------------------------------------------------------------
+function buildHangar(color){
+  const g = new THREE.Group();
+  const bodyGeo = new THREE.BoxGeometry(18,9,26);
+  const bodyMat = new THREE.MeshStandardMaterial({ color:0xcfcfcf, flatShading:true });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.position.y = 4.5;
+  body.castShadow = true; body.receiveShadow = true;
+  g.add(body);
+
+  // Triangular-prism roof via 3-sided cylinder
+  const roofGeo = new THREE.CylinderGeometry(9.5,9.5,26,3);
+  roofGeo.rotateZ(Math.PI/2);
+  roofGeo.rotateX(Math.PI/2);
+  const roofMat = new THREE.MeshStandardMaterial({ color:color, flatShading:true });
+  const roof = new THREE.Mesh(roofGeo, roofMat);
+  roof.position.y = 9 + 4.7;
+  roof.rotation.y = 0;
+  roof.castShadow = true;
+  g.add(roof);
+
+  // Door stripe
+  const stripeGeo = new THREE.BoxGeometry(18.2,2,1);
+  const stripeMat = new THREE.MeshStandardMaterial({ color:color });
+  const stripe = new THREE.Mesh(stripeGeo, stripeMat);
+  stripe.position.set(0, 2, 13.05);
+  g.add(stripe);
+
+  return g;
+}
+
+function buildTower(color){
+  const g = new THREE.Group();
+  const poleGeo = new THREE.CylinderGeometry(2.2,2.6,22,8);
+  const poleMat = new THREE.MeshStandardMaterial({ color:0xd8d8d8, flatShading:true });
+  const pole = new THREE.Mesh(poleGeo, poleMat);
+  pole.position.y = 11;
+  pole.castShadow = true;
+  g.add(pole);
+
+  const cabGeo = new THREE.BoxGeometry(9,6,9);
+  const cabMat = new THREE.MeshStandardMaterial({ color:0xe7e9ec, flatShading:true });
+  const cab = new THREE.Mesh(cabGeo, cabMat);
+  cab.position.y = 22+3;
+  cab.castShadow = true;
+  g.add(cab);
+
+  // Glass observation band wrapping the cab, like a real ATC tower
+  const glassGeo = new THREE.BoxGeometry(9.3,2.6,9.3);
+  const glassMat = new THREE.MeshStandardMaterial({ color:0x1e3a54, flatShading:true, transparent:true, opacity:0.82 });
+  const glassBand = new THREE.Mesh(glassGeo, glassMat);
+  glassBand.position.y = 22+3.2;
+  g.add(glassBand);
+
+  // Accent trim ring matching the airport's color scheme
+  const trimGeo = new THREE.BoxGeometry(9.2,0.6,9.2);
+  const trimMat = new THREE.MeshStandardMaterial({ color: color });
+  const trim = new THREE.Mesh(trimGeo, trimMat);
+  trim.position.y = 22+0.3;
+  g.add(trim);
+
+  const roofGeo = new THREE.ConeGeometry(6.6,3,4);
+  const roofMat = new THREE.MeshStandardMaterial({ color:0x333333, flatShading:true });
+  const roof = new THREE.Mesh(roofGeo, roofMat);
+  roof.rotation.y = Math.PI/4;
+  roof.position.y = 22+6+1.5;
+  g.add(roof);
+
+  // Antenna mast with a blinking-style red beacon on top
+  const mastGeo = new THREE.CylinderGeometry(0.12,0.12,4,6);
+  const mastMat = new THREE.MeshStandardMaterial({ color:0x555555 });
+  const mast = new THREE.Mesh(mastGeo, mastMat);
+  mast.position.y = 22+6+3;
+  g.add(mast);
+
+  const beaconGeo = new THREE.SphereGeometry(0.4,8,8);
+  const beaconMat = new THREE.MeshStandardMaterial({ color:0xff2222, emissive:0xff2222, emissiveIntensity:0.6 });
+  const beacon = new THREE.Mesh(beaconGeo, beaconMat);
+  beacon.position.y = 22+6+5.1;
+  g.add(beacon);
+
+  return g;
+}
+
+function buildWindsock(color){
+  const g = new THREE.Group();
+  const poleGeo = new THREE.CylinderGeometry(0.3,0.3,10,6);
+  const poleMat = new THREE.MeshStandardMaterial({ color:0x999999 });
+  const pole = new THREE.Mesh(poleGeo, poleMat);
+  pole.position.y = 5;
+  g.add(pole);
+  const sockGeo = new THREE.ConeGeometry(1.1,4,8,1,true);
+  const sockMat = new THREE.MeshStandardMaterial({ color: color, side:THREE.DoubleSide, flatShading:true });
+  const sock = new THREE.Mesh(sockGeo, sockMat);
+  sock.rotation.z = Math.PI/2;
+  sock.position.set(1.6, 9, 0);
+  g.add(sock);
+  return g;
+}
+
+// ---------------------------------------------------------------------
+// Gate number sign — a canvas-texture numeral on a post, marking each of
+// the 5 boarding gates at every airport.
+// ---------------------------------------------------------------------
+function makeGateSignTexture(number, color){
+  const c = document.createElement('canvas');
+  c.width = 128; c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#141c24';
+  ctx.fillRect(0,0,128,128);
+  ctx.strokeStyle = '#'+color.toString(16).padStart(6,'0');
+  ctx.lineWidth = 8;
+  ctx.strokeRect(5,5,118,118);
+  ctx.fillStyle = '#eaf6ff';
+  ctx.font = 'bold 76px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(number), 64, 70);
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function buildGateSign(number, color){
+  const g = new THREE.Group();
+  const poleGeo = new THREE.CylinderGeometry(0.22,0.22,5.2,8);
+  const poleMat = new THREE.MeshStandardMaterial({ color:0x8b9096 });
+  const pole = new THREE.Mesh(poleGeo, poleMat);
+  pole.position.y = 2.6;
+  g.add(pole);
+  const signGeo = new THREE.PlaneGeometry(3.2,3.2);
+  const signMat = new THREE.MeshStandardMaterial({ map: makeGateSignTexture(number, color), side: THREE.DoubleSide });
+  const sign = new THREE.Mesh(signGeo, signMat);
+  sign.position.y = 5.6;
+  g.add(sign);
+  return g;
+}
+
+// ---------------------------------------------------------------------
+// Simple low-poly person (body + head), used for passengers walking the
+// jet bridge to board the parked airliners.
+// ---------------------------------------------------------------------
+function buildPerson(shirtColor){
+  const g = new THREE.Group();
+  const bodyGeo = new THREE.CylinderGeometry(0.32,0.4,1.15,7);
+  const bodyMat = new THREE.MeshStandardMaterial({ color: shirtColor, flatShading:true });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.position.y = 0.85;
+  body.castShadow = true;
+  g.add(body);
+  const headGeo = new THREE.SphereGeometry(0.26,8,7);
+  const headMat = new THREE.MeshStandardMaterial({ color:0xe0b48f, flatShading:true });
+  const head = new THREE.Mesh(headGeo, headMat);
+  head.position.y = 1.58;
+  g.add(head);
+  return g;
+}
+
+// ---------------------------------------------------------------------
+// Big low-poly passenger airliner (decorative, parked at the hub gate)
+// ---------------------------------------------------------------------
+function buildPassengerPlane(){
+  const g = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color:0xf4f6f8, flatShading:true });
+  const bellyMat = new THREE.MeshStandardMaterial({ color:0xd8dde2, flatShading:true });
+  const cheatMat = new THREE.MeshStandardMaterial({ color:0x1f5fbf, flatShading:true });
+  const accentMat = new THREE.MeshStandardMaterial({ color:0xffb020, flatShading:true });
+  const glassMat = new THREE.MeshStandardMaterial({ color:0x18232e, flatShading:true });
+  const windowMat = new THREE.MeshStandardMaterial({ color:0x0d1620, flatShading:true, emissive:0x1a2c3d, emissiveIntensity:0.25 });
+  const darkMat = new THREE.MeshStandardMaterial({ color:0x24272b, flatShading:true });
+  const engineMat = new THREE.MeshStandardMaterial({ color:0xcfd4d8, flatShading:true });
+  const engineDarkMat = new THREE.MeshStandardMaterial({ color:0x3a3f45, flatShading:true });
+
+  const FUS_LEN = 34, FUS_R = 2.6;
+
+  const fuselageGeo = new THREE.CylinderGeometry(FUS_R, FUS_R*0.92, FUS_LEN, 14);
+  fuselageGeo.rotateX(Math.PI/2);
+  const fuselage = new THREE.Mesh(fuselageGeo, bodyMat);
+  fuselage.position.y = 5.2;
+  fuselage.castShadow = true; fuselage.receiveShadow = true;
+  g.add(fuselage);
+
+  // Smoother rounded nose radome (two stacked cones read as a curved dome from a distance)
+  const noseGeo = new THREE.ConeGeometry(FUS_R*0.98, 3.4, 14);
+  noseGeo.rotateX(-Math.PI/2);
+  const nose = new THREE.Mesh(noseGeo, bodyMat);
+  nose.position.set(0, 5.2, -FUS_LEN/2 - 1.6);
+  nose.castShadow = true;
+  g.add(nose);
+  const noseTipGeo = new THREE.ConeGeometry(FUS_R*0.55, 2.2, 12);
+  noseTipGeo.rotateX(-Math.PI/2);
+  const noseTip = new THREE.Mesh(noseTipGeo, darkMat);
+  noseTip.position.set(0, 5.2, -FUS_LEN/2 - 3.2);
+  g.add(noseTip);
+
+  const tailConeGeo = new THREE.ConeGeometry(FUS_R*0.65, 6.5, 14);
+  tailConeGeo.rotateX(Math.PI/2);
+  const tailCone = new THREE.Mesh(tailConeGeo, bodyMat);
+  tailCone.position.set(0, 5.35, FUS_LEN/2 + 2.8);
+  g.add(tailCone);
+  // APU exhaust nub at the very tail
+  const apuGeo = new THREE.CylinderGeometry(0.35,0.4,1.1,8);
+  apuGeo.rotateX(Math.PI/2);
+  const apu = new THREE.Mesh(apuGeo, engineDarkMat);
+  apu.position.set(0, 5.35, FUS_LEN/2 + 6.1);
+  g.add(apu);
+
+  // Cockpit windshield — angled panels rather than a single box, reads as a proper cockpit
+  const cockpitGeo = new THREE.BoxGeometry(3.4, 1.2, 2.4);
+  const cockpitGlass = new THREE.Mesh(cockpitGeo, glassMat);
+  cockpitGlass.position.set(0, 6.15, -FUS_LEN/2 - 0.2);
+  cockpitGlass.rotation.x = 0.12;
+  g.add(cockpitGlass);
+
+  // Row of passenger windows down both sides of the fuselage
+  [-1,1].forEach(side=>{
+    const winCount = 16;
+    const startZ = -FUS_LEN/2 + 4, endZ = FUS_LEN/2 - 3.5;
+    for(let i=0;i<winCount;i++){
+      const t = i/(winCount-1);
+      const z = startZ + (endZ-startZ)*t;
+      const winGeo = new THREE.BoxGeometry(0.12, 0.55, 0.75);
+      const win = new THREE.Mesh(winGeo, windowMat);
+      win.position.set(side*FUS_R*0.99, 5.6, z);
+      g.add(win);
+    }
+  });
+
+  // Livery cheatline stripes (navy + gold accent) down both sides of the fuselage
+  [-1,1].forEach(side=>{
+    const stripeGeo = new THREE.BoxGeometry(0.15, 0.85, FUS_LEN-2);
+    const stripe = new THREE.Mesh(stripeGeo, cheatMat);
+    stripe.position.set(side*FUS_R*0.985, 4.75, 0);
+    g.add(stripe);
+    const accentGeo = new THREE.BoxGeometry(0.16, 0.22, FUS_LEN-2);
+    const accent = new THREE.Mesh(accentGeo, accentMat);
+    accent.position.set(side*FUS_R*0.99, 4.3, 0);
+    g.add(accent);
+  });
+  // Belly panel to break up the underside color
+  const bellyGeo = new THREE.BoxGeometry(FUS_R*1.5, 1.2, FUS_LEN-4);
+  const belly = new THREE.Mesh(bellyGeo, bellyMat);
+  belly.position.set(0, 2.9, 0);
+  g.add(belly);
+
+  // Wings with simple swept leading edge (two boxes fanned slightly) + winglets
+  const wingMeshes = {};
+  const navLights = [];
+  [-1,1].forEach(side=>{
+    const wingGeo = new THREE.BoxGeometry(18.5, 0.5, 6.5);
+    const wing = new THREE.Mesh(wingGeo, bodyMat);
+    wing.position.set(side*10, 3.9, 1.5);
+    wing.rotation.z = -side*0.045;
+    wing.castShadow = true;
+    g.add(wing);
+
+    // Upturned winglet at the tip
+    const wingletGeo = new THREE.BoxGeometry(1.6, 2.6, 3.0);
+    const winglet = new THREE.Mesh(wingletGeo, cheatMat);
+    winglet.position.set(side*18.8, 5.0, 2.6);
+    winglet.rotation.z = side*0.28;
+    g.add(winglet);
+
+    // Group the wing + its winglet so both hide together if this wing breaks off
+    wingMeshes[side<0?'L':'R'] = { wing, winglet };
+
+    // Wingtip nav light — red on the left (port), green on the right (starboard)
+    const navLight = makeNavLight(side<0 ? 0xff2a2a : 0x33ff66);
+    navLight.position.set(side*19.4, 5.0, 2.6);
+    g.add(navLight);
+    navLights.push(navLight);
+  });
+  g.userData.wingMeshes = wingMeshes;
+  g.userData.navLights = navLights;
+
+  // Horizontal stabilizer
+  const hstabGeo = new THREE.BoxGeometry(13, 0.35, 3.6);
+  const hstab = new THREE.Mesh(hstabGeo, bodyMat);
+  hstab.position.set(0, 8.2, FUS_LEN/2 - 1.5);
+  g.add(hstab);
+
+  // Elevator/flap surface on a hinge at the trailing edge — deflects visually in
+  // response to W/S pitch input (see updateInput).
+  const jetElevatorPivot = new THREE.Group();
+  jetElevatorPivot.position.set(0, 8.2, FUS_LEN/2 + 0.3);
+  const jetElevatorGeo = new THREE.BoxGeometry(11, 0.3, 1.6);
+  const jetElevator = new THREE.Mesh(jetElevatorGeo, bodyMat);
+  jetElevator.position.set(0,0,0.8);
+  jetElevatorPivot.add(jetElevator);
+  g.add(jetElevatorPivot);
+  g.userData.flapSurfaces = [jetElevatorPivot];
+
+  // Vertical fin with a swept top and a tail logo accent stripe
+  const finGeo = new THREE.BoxGeometry(0.4, 7, 5.5);
+  const fin = new THREE.Mesh(finGeo, cheatMat);
+  fin.position.set(0, 9.5, FUS_LEN/2 - 3);
+  fin.castShadow = true;
+  g.add(fin);
+  const finTopGeo = new THREE.BoxGeometry(0.42, 2.2, 2.6);
+  const finTop = new THREE.Mesh(finTopGeo, bodyMat);
+  finTop.position.set(0, 12.6, FUS_LEN/2 - 1.9);
+  finTop.rotation.x = -0.18;
+  g.add(finTop);
+  const finStripeGeo = new THREE.BoxGeometry(0.44, 1.1, 5.3);
+  const finStripe = new THREE.Mesh(finStripeGeo, accentMat);
+  finStripe.position.set(0, 8.0, FUS_LEN/2 - 3);
+  g.add(finStripe);
+
+  // Engine nacelles slung under the wings on their own pylons
+  [-11, 11].forEach(x=>{
+    const pylonGeo = new THREE.BoxGeometry(1.2, 1.6, 2.4);
+    const pylon = new THREE.Mesh(pylonGeo, bodyMat);
+    pylon.position.set(x, 3.1, 1.8);
+    g.add(pylon);
+
+    const nacelleGeo = new THREE.CylinderGeometry(1.3,1.3,5.2,12);
+    nacelleGeo.rotateX(Math.PI/2);
+    const nacelle = new THREE.Mesh(nacelleGeo, engineMat);
+    nacelle.position.set(x, 2.1, 2.0);
+    nacelle.castShadow = true;
+    g.add(nacelle);
+    const intakeGeo = new THREE.CylinderGeometry(1.32,1.32,0.3,12);
+    intakeGeo.rotateX(Math.PI/2);
+    const intake = new THREE.Mesh(intakeGeo, darkMat);
+    intake.position.set(x, 2.1, -0.6);
+    g.add(intake);
+    const exhaustGeo = new THREE.CylinderGeometry(1.05,1.15,0.7,12);
+    exhaustGeo.rotateX(Math.PI/2);
+    const exhaust = new THREE.Mesh(exhaustGeo, engineDarkMat);
+    exhaust.position.set(x, 2.1, 4.8);
+    g.add(exhaust);
+  });
+
+  // Landing gear
+  function makeGear(x,z,r){
+    const grp = new THREE.Group();
+    const strutGeo = new THREE.CylinderGeometry(0.18,0.18,3.4,6);
+    const strut = new THREE.Mesh(strutGeo, darkMat);
+    strut.position.set(x, 1.5, z);
+    grp.add(strut);
+    const wheelGeo = new THREE.CylinderGeometry(r,r,0.5,10);
+    wheelGeo.rotateZ(Math.PI/2);
+    const wheel = new THREE.Mesh(wheelGeo, darkMat);
+    wheel.position.set(x, 0.05, z);
+    grp.add(wheel);
+    return grp;
+  }
+  g.add(makeGear(-2.2, -8, 0.9));
+  g.add(makeGear(2.2, -8, 0.9));
+  g.add(makeGear(0, 10, 0.75));
+
+  return g;
+}
+
+// Local-space obstacle descriptors, resolved to world space once every airport is fully
+// built and scaled (localToWorld needs an up-to-date matrixWorld, which isn't ready yet
+// mid-construction — especially before group.scale is applied at the end of buildAirport).
+const obstacleDescs = [];
+// Per-gate decorative objects (airliner + its boarding passengers) so the route system can
+// hide/show them as your destination changes.
+const gateDecor = []; // {airportIdx, gateNumber, airlinerGroup, walkers:[...]}
+
+function addObstacle(group, x, z, radius, y, gateRef){
+  obstacleDescs.push({ group, x, y: y||0, z, radius, gateRef: gateRef||null });
+}
+
+function buildAirport(def){
+  const group = new THREE.Group();
+  group.position.copy(def.pos);
+  group.rotation.y = def.rotY;
+
+  // Runway (long axis along local Z, nose of spawned plane faces -Z)
+  const runwayLen = 300, runwayWidth = 22;
+  const runwayGeo = new THREE.BoxGeometry(runwayWidth, 0.3, runwayLen);
+  const runwayMat = new THREE.MeshStandardMaterial({ color:0x3a3a3f, flatShading:true });
+  const runway = new THREE.Mesh(runwayGeo, runwayMat);
+  runway.position.set(0, 0.15, 0);
+  runway.receiveShadow = true;
+  group.add(runway);
+
+  // Centerline stripes
+  const stripeMat = new THREE.MeshStandardMaterial({ color:0xffffff });
+  for(let s=-runwayLen/2+10; s<runwayLen/2-10; s+=18){
+    const stripeGeo = new THREE.BoxGeometry(1.4,0.32,8);
+    const stripe = new THREE.Mesh(stripeGeo, stripeMat);
+    stripe.position.set(0,0.16,s);
+    group.add(stripe);
+  }
+  // Threshold color block (identifies airport)
+  const thresholdGeo = new THREE.BoxGeometry(runwayWidth-2,0.34,10);
+  const thresholdMat = new THREE.MeshStandardMaterial({ color: def.primary });
+  const threshold = new THREE.Mesh(thresholdGeo, thresholdMat);
+  threshold.position.set(0,0.17,-runwayLen/2+8);
+  group.add(threshold);
+  const threshold2 = threshold.clone();
+  threshold2.position.z = runwayLen/2-8;
+  group.add(threshold2);
+
+  // Hangars
+  const h1 = buildHangar(def.primary);
+  h1.position.set(-40,0,-60);
+  h1.rotation.y = Math.PI/2;
+  group.add(h1);
+  addObstacle(group, -40, -60, 15, 4.5);
+  const h2 = buildHangar(def.secondary);
+  h2.position.set(-40,0,-20);
+  h2.rotation.y = Math.PI/2;
+  group.add(h2);
+  addObstacle(group, -40, -20, 15, 4.5);
+
+  // Tower
+  const tower = buildTower(def.primary);
+  tower.position.set(45,0,-10);
+  group.add(tower);
+  addObstacle(group, 45, -10, 6, 14);
+
+  // Windsock
+  const sock = buildWindsock(def.primary);
+  sock.position.set(35,0,30);
+  group.add(sock);
+
+  // --- Terminal complex: taxiway, apron, passenger terminal, 5 numbered gates ---
+  // Every airport gets these now, not just the home field, so any field can be used to board the jet.
+  if(true){
+    const apronMat = new THREE.MeshStandardMaterial({ color:0x5a5f66, flatShading:true });
+    const taxiMat = new THREE.MeshStandardMaterial({ color:0x4a4e54, flatShading:true });
+
+    // Apron / parking ramp on the east side of the runway — long enough to hold 5 gates
+    const apronGeo = new THREE.BoxGeometry(70, 0.26, 210);
+    const apron = new THREE.Mesh(apronGeo, apronMat);
+    apron.position.set(95, 0.13, 0);
+    apron.receiveShadow = true;
+    group.add(apron);
+
+    // Taxiway connecting the runway to the apron, with a yellow centerline
+    const taxiGeo = new THREE.BoxGeometry(50, 0.28, 16);
+    const taxiway = new THREE.Mesh(taxiGeo, taxiMat);
+    taxiway.position.set(35, 0.14, -60);
+    taxiway.receiveShadow = true;
+    group.add(taxiway);
+    const taxiLineGeo = new THREE.BoxGeometry(46,0.3,1);
+    const taxiLineMat = new THREE.MeshStandardMaterial({ color:0xffd23f });
+    const taxiLine = new THREE.Mesh(taxiLineGeo, taxiLineMat);
+    taxiLine.position.set(35,0.15,-60);
+    group.add(taxiLine);
+
+    // Second taxiway link further down the runway, forming a taxi loop back to the threshold
+    const taxi2Geo = new THREE.BoxGeometry(50, 0.28, 16);
+    const taxiway2 = new THREE.Mesh(taxi2Geo, taxiMat);
+    taxiway2.position.set(35, 0.14, 55);
+    taxiway2.receiveShadow = true;
+    group.add(taxiway2);
+    const taxiLine2 = taxiLine.clone();
+    taxiLine2.position.set(35,0.15,55);
+    group.add(taxiLine2);
+
+    // Passenger terminal building — long axis runs along the row of gates
+    const terminalGeo = new THREE.BoxGeometry(40,16,190);
+    const terminalMat = new THREE.MeshStandardMaterial({ color:0xe4e6ea, flatShading:true });
+    const terminal = new THREE.Mesh(terminalGeo, terminalMat);
+    terminal.position.set(140, 8, 0);
+    terminal.castShadow = true; terminal.receiveShadow = true;
+    group.add(terminal);
+
+    // Glass frontage facing the apron
+    const glassGeo = new THREE.BoxGeometry(1,7,186);
+    const glassMat2 = new THREE.MeshStandardMaterial({ color:0x1e3a54, flatShading:true, transparent:true, opacity:0.85 });
+    const glassFront = new THREE.Mesh(glassGeo, glassMat2);
+    glassFront.position.set(140-20-0.6, 9, 0);
+    group.add(glassFront);
+
+    // Accent roofline stripe
+    const roofStripeGeo = new THREE.BoxGeometry(40.4,1.2,190.4);
+    const roofStripeMat = new THREE.MeshStandardMaterial({ color: def.primary });
+    const roofStripe = new THREE.Mesh(roofStripeGeo, roofStripeMat);
+    roofStripe.position.set(140,16.6,0);
+    group.add(roofStripe);
+
+    // Terminal collision — a chain of spheres along its length so the whole building blocks flight
+    GATE_OFFSETS.forEach(zOff => addObstacle(group, 140, zOff, 24, 8));
+
+    // Five numbered gates spread along the apron, each with its own jet bridge and parked
+    // airliner (with a couple of passengers boarding). When a gate becomes your assigned
+    // route destination, its airliner + passengers are hidden automatically — you're the
+    // one parking there instead.
+    GATE_OFFSETS.forEach((zOff, gi)=>{
+      const standGeo = new THREE.RingGeometry(4.2,5.0,24);
+      standGeo.rotateX(-Math.PI/2);
+      const standMat = new THREE.MeshStandardMaterial({ color:0xffd23f, flatShading:true, side:THREE.DoubleSide });
+      const stand = new THREE.Mesh(standGeo, standMat);
+      stand.position.set(98, 0.3, zOff);
+      group.add(stand);
+
+      const sign = buildGateSign(gi+1, def.primary);
+      sign.position.set(112, 0, zOff);
+      group.add(sign);
+
+      // Jet bridge connecting the terminal to this gate's airliner door
+      const bridgeGeo = new THREE.BoxGeometry(22,3,3.4);
+      const bridgeMat = new THREE.MeshStandardMaterial({ color:0xcfd3d8, flatShading:true });
+      const bridge = new THREE.Mesh(bridgeGeo, bridgeMat);
+      bridge.position.set(115, 5, zOff);
+      group.add(bridge);
+
+      // Parked passenger airliner at the gate (decorative — taxi up and press B, or use the
+      // on-screen button, to take it over)
+      const airliner = buildPassengerPlane();
+      airliner.position.set(98, 0, zOff);
+      airliner.rotation.y = -Math.PI/2;
+      group.add(airliner);
+      const gateRef = { airportIdx: def.id, gateNumber: gi+1 };
+      addObstacle(group, 98, zOff, 20, 5, gateRef);
+
+      // A couple of passengers walking the jet bridge to board
+      const walkers = [];
+      for(let w=0; w<2; w++){
+        const person = buildPerson(w===0 ? 0x3f7fdc : 0xd94444);
+        person.position.set(104, 0, zOff + (w-0.5)*1.4);
+        group.add(person);
+        walkers.push({ mesh: person, phase: Math.random()*10, laneOffset: (w-0.5)*1.4, zOff });
+      }
+
+      gateDecor.push({ airportIdx: def.id, gateNumber: gi+1, airlinerGroup: airliner, walkers });
+    });
+
+    // Second ATC tower positioned near the terminal, like a real hub airport
+    const hubTower = buildTower(def.primary);
+    hubTower.position.set(170, 0, 25);
+    group.add(hubTower);
+    addObstacle(group, 170, 25, 6, 14);
+  }
+
+  // Scale the entire built airport (runway, hangars, tower, taxiways, terminal, everything)
+  // up together, so it reads as a much bigger, more real-scale airfield.
+  group.scale.setScalar(AIRPORT_SCALE);
+
+  scene.add(group);
+  return group;
+}
+const airportGroups = AIRPORTS.map(buildAirport);
+airportGroups.forEach(g=>g.updateMatrixWorld(true));
+
+// Resolve all registered obstacles to world space now that every airport group has its
+// final position/rotation/scale applied.
+obstacleDescs.forEach(o=>{
+  const p = o.group.localToWorld(new THREE.Vector3(o.x, o.y, o.z));
+  obstacles.push({ pos: p, radius: o.radius*AIRPORT_SCALE, gateRef: o.gateRef });
+});
+
+// Gate positions (world space) — 5 numbered gates per airport, 15 total. Taxi (or fly)
+// to a gate and press B (or use the on-screen button) to board the passenger jet; the
+// route system below assigns one of these 15 as your current destination.
+const gates = [];
+airportGroups.forEach((g, ai)=>{
+  GATE_OFFSETS.forEach((zOff, gi)=>{
+    gates.push({
+      pos: g.localToWorld(new THREE.Vector3(98,0,zOff)),
+      airportIdx: ai,
+      airportName: AIRPORTS[ai].name,
+      gateNumber: gi+1
+    });
+  });
+});
+const GATE_RADIUS = 26 * AIRPORT_SCALE;
+
+// ---------------------------------------------------------------------
+// Player airplane (all low-poly primitives), nose points toward local -Z
+// ---------------------------------------------------------------------
+// Small wingtip navigation light: an emissive bulb plus a soft point light, both dimmed
+// during the day and brought up at night (see updateNavLights).
+function makeNavLight(color){
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color, emissive:color, emissiveIntensity:0.3, flatShading:true });
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.22,6,6), mat);
+  g.add(bulb);
+  const light = new THREE.PointLight(color, 0, 14);
+  g.add(light);
+  g.userData.bulbMat = mat;
+  g.userData.light = light;
+  return g;
+}
+function updateNavLights(){
+  const navLights = plane.userData.navLights;
+  if(!navLights) return;
+  const nightAmt = clamp01(1 - dayFactor);
+  for(const nl of navLights){
+    nl.userData.bulbMat.emissiveIntensity = 0.15 + nightAmt*2.2;
+    nl.userData.light.intensity = nightAmt*1.4;
+  }
+}
+
+function buildPlane(){
+  const plane = new THREE.Group();
+
+  const bodyMat = new THREE.MeshStandardMaterial({ color:0xe6e6e6, flatShading:true });
+  const accentMat = new THREE.MeshStandardMaterial({ color:0xd94444, flatShading:true });
+  const glassMat = new THREE.MeshStandardMaterial({ color:0x224455, flatShading:true, transparent:true, opacity:0.75 });
+  const darkMat = new THREE.MeshStandardMaterial({ color:0x2b2b2b, flatShading:true });
+
+  // Fuselage
+  const fuselageGeo = new THREE.CylinderGeometry(0.9,1.1,6.4,8);
+  fuselageGeo.rotateX(Math.PI/2);
+  const fuselage = new THREE.Mesh(fuselageGeo, bodyMat);
+  fuselage.castShadow = true;
+  plane.add(fuselage);
+
+  // Nose cone
+  const noseGeo = new THREE.ConeGeometry(0.9,1.4,8);
+  noseGeo.rotateX(-Math.PI/2);
+  const nose = new THREE.Mesh(noseGeo, accentMat);
+  nose.position.set(0,0,-3.85);
+  nose.castShadow = true;
+  plane.add(nose);
+
+  // Cockpit windshield
+  const cockpitGeo = new THREE.SphereGeometry(0.75,8,6,0,Math.PI*2,0,Math.PI/2);
+  const cockpit = new THREE.Mesh(cockpitGeo, glassMat);
+  cockpit.position.set(0,0.55,-1.6);
+  cockpit.scale.set(1,0.8,1.3);
+  plane.add(cockpit);
+
+  // Wings — built as separate left/right halves (rather than one full-span box) so a
+  // wing can be individually hidden if it gets clipped off in a collision.
+  const wingHalfGeo = new THREE.BoxGeometry(4.7,0.18,1.7);
+  const wingL = new THREE.Mesh(wingHalfGeo, bodyMat);
+  wingL.position.set(-2.35,0,0.2);
+  wingL.castShadow = true;
+  plane.add(wingL);
+  const wingR = new THREE.Mesh(wingHalfGeo, bodyMat);
+  wingR.position.set(2.35,0,0.2);
+  wingR.castShadow = true;
+  plane.add(wingR);
+  const wingStripeGeo = new THREE.BoxGeometry(1.4,0.2,1.72);
+  const wingStripeL = new THREE.Mesh(wingStripeGeo, accentMat);
+  wingStripeL.position.set(-3.6,0.01,0.2);
+  plane.add(wingStripeL);
+  const wingStripeR = wingStripeL.clone();
+  wingStripeR.position.x = 3.6;
+  plane.add(wingStripeR);
+  wingL.userData.stripe = wingStripeL;
+  wingR.userData.stripe = wingStripeR;
+
+  // Wingtip navigation lights — red on the left (port), green on the right (starboard),
+  // standard aviation convention. Brightness is tied to the day/night cycle (see updateNavLights).
+  const navLightL = makeNavLight(0xff2a2a);
+  navLightL.position.set(-4.6,0,0.4);
+  plane.add(navLightL);
+  const navLightR = makeNavLight(0x33ff66);
+  navLightR.position.set(4.6,0,0.4);
+  plane.add(navLightR);
+  plane.userData.navLights = [navLightL, navLightR];
+  plane.userData.wingMeshes = { L: wingL, R: wingR };
+
+  // Tail wing (horizontal stabilizer)
+  const tailWingGeo = new THREE.BoxGeometry(3.6,0.15,1.1);
+  const tailWing = new THREE.Mesh(tailWingGeo, bodyMat);
+  tailWing.position.set(0,0.2,2.9);
+  plane.add(tailWing);
+
+  // Elevator/flap surface on a hinge at the trailing edge of the tail wing — deflects
+  // visually in response to W/S pitch input (see updateInput).
+  const elevatorPivot = new THREE.Group();
+  elevatorPivot.position.set(0,0.2,3.45);
+  const elevatorGeo = new THREE.BoxGeometry(3.4,0.13,0.7);
+  const elevator = new THREE.Mesh(elevatorGeo, bodyMat);
+  elevator.position.set(0,0,0.35);
+  elevatorPivot.add(elevator);
+  plane.add(elevatorPivot);
+  plane.userData.flapSurfaces = [elevatorPivot];
+
+  // Vertical stabilizer (rudder fin)
+  const finGeo = new THREE.BoxGeometry(0.15,1.4,1.4);
+  const fin = new THREE.Mesh(finGeo, accentMat);
+  fin.position.set(0,1.0,3.0);
+  fin.castShadow = true;
+  plane.add(fin);
+
+  // Landing gear (simple struts + wheels)
+  function makeWheel(x,z){
+    const g = new THREE.Group();
+    const strutGeo = new THREE.CylinderGeometry(0.08,0.08,0.9,6);
+    const strut = new THREE.Mesh(strutGeo, darkMat);
+    strut.position.set(x, -0.9, z);
+    g.add(strut);
+    const wheelGeo = new THREE.CylinderGeometry(0.35,0.35,0.25,10);
+    wheelGeo.rotateZ(Math.PI/2);
+    const wheel = new THREE.Mesh(wheelGeo, darkMat);
+    wheel.position.set(x,-1.35,z);
+    g.add(wheel);
+    return g;
+  }
+  plane.add(makeWheel(-1.3,0.6));
+  plane.add(makeWheel(1.3,0.6));
+  plane.add(makeWheel(0,-3.0));
+
+  // Propeller (spins around local Z axis, mounted at nose tip)
+  const propGroup = new THREE.Group();
+  propGroup.position.set(0,0,-4.55);
+  const hubGeo = new THREE.CylinderGeometry(0.15,0.15,0.3,8);
+  hubGeo.rotateX(Math.PI/2);
+  const hub = new THREE.Mesh(hubGeo, darkMat);
+  propGroup.add(hub);
+  const bladeGeo = new THREE.BoxGeometry(0.18,2.6,0.05);
+  const blade1 = new THREE.Mesh(bladeGeo, darkMat);
+  propGroup.add(blade1);
+  const blade2 = blade1.clone();
+  blade2.rotation.z = Math.PI/2;
+  propGroup.add(blade2);
+  plane.add(propGroup);
+
+  plane.userData.propGroup = propGroup;
+  return plane;
+}
+
+// ---------------------------------------------------------------------
+// Flight specs — different handling characteristics per aircraft model
+// ---------------------------------------------------------------------
+const PLANE_SPECS = {
+  small: {
+    label: 'Prop Plane',
+    maxSpeed: 55, stallSpeed: 16, takeoffSpeed: 22,
+    pitchMaxRate: 0.9, rollMaxRate: 1.7, yawMaxRate: 1.6, throttleRate: 0.55,
+    gearHeight: 1.4, wingHalf: 4.7,
+    camExt: new THREE.Vector3(0,4.2,13.5), camInt: new THREE.Vector3(0,1.35,-1.1)
+  },
+  jet: {
+    label: 'Passenger Jet',
+    maxSpeed: 95, stallSpeed: 30, takeoffSpeed: 45,
+    pitchMaxRate: 0.45, rollMaxRate: 0.8, yawMaxRate: 0.85, throttleRate: 0.35,
+    gearHeight: 0.9, wingHalf: 19.2,
+    camExt: new THREE.Vector3(0,11,36), camInt: new THREE.Vector3(0,6.6,-13)
+  }
+};
+let specs = PLANE_SPECS.small;
+let currentModel = 'small';
+
+let plane = buildPlane();
+scene.add(plane);
+
+// Spawn at home airport runway start, facing down the runway (-Z, matches nose dir)
+function spawnAtHome(){
+  const home = AIRPORTS[0];
+  plane.position.set(home.pos.x, heightAt(home.pos.x, home.pos.z)+specs.gearHeight, home.pos.z + 120*AIRPORT_SCALE);
+  plane.quaternion.identity();
+  plane.rotation.y = home.rotY + Math.PI; // face down runway toward -Z of world through rotY frame
+  state.speed = 0;
+  state.throttle = 0;
+  state.pitchRate = 0; state.rollRate = 0; state.yawRate = 0;
+  state.grounded = true; // start parked on the runway, not falling
+  state.phase = 'ground';
+  state.crosswindThisFlight = false;
+  state.crosswindActive = false;
+  state.engineFailure = false;
+  prevGroundSpeed = 0;
+  hideCrosswindBanner();
+  hideEngineFailBanner();
+  resetWings();
+}
+
+// ---------------------------------------------------------------------
+// Flight state & input
+// ---------------------------------------------------------------------
+const state = {
+  speed: 0,
+  throttle: 0,
+  pitchRate: 0,
+  rollRate: 0,
+  yawRate: 0,
+  cameraMode: 'exterior', // 'exterior' | 'interior'
+  grounded: true, // true = taxiing on the ground, false = airborne
+  phase: 'ground', // 'ground' | 'departing' | 'airborne' — see updateFlight for why this exists
+  crosswindThisFlight: false, // rolled once per takeoff — a ~1-in-5 chance of a crosswind on approach
+  crosswindActive: false,
+  crosswindDir: 1,
+  engineFailure: false, // true while a mid-flight engine failure is in progress
+  engineFailureDir: 1,
+  wingBroken: null,      // null | 'L' | 'R'
+  wingBrokenDir: 1,
+};
+
+const keys = {};
+window.addEventListener('keydown', (e)=>{
+  keys[e.code] = true;
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
+
+  if(emergencyState){
+    // During a malfunction, the arrow keys drive the gauge instead of anything else.
+    if(e.code === 'ArrowUp') adjustEmergencyValue(1);
+    if(e.code === 'ArrowDown') adjustEmergencyValue(-1);
+    if(e.code === 'ArrowRight') adjustEmergencyValue(5);
+    if(e.code === 'ArrowLeft') adjustEmergencyValue(-5);
+    return;
+  }
+
+  if(e.code === 'KeyC'){ toggleCamera(); }
+  if(e.code === 'KeyH'){ toggleHelp(); }
+  if(e.code === 'KeyB'){ tryBoardToggle(); }
+});
+window.addEventListener('keyup', (e)=>{ keys[e.code] = false; });
+
+function toggleCamera(){
+  state.cameraMode = (state.cameraMode === 'exterior') ? 'interior' : 'exterior';
+  document.getElementById('cockpitFrame').style.display = (state.cameraMode==='interior') ? 'block' : 'none';
+  document.getElementById('hudCamera').textContent = (state.cameraMode==='interior') ? 'Interior' : 'Exterior';
+}
+
+const overlay = document.getElementById('controlsOverlay');
+function toggleHelp(){
+  overlay.style.display = (overlay.style.display === 'none') ? 'flex' : 'none';
+}
+
+// ---------------------------------------------------------------------
+// Background music — a small procedurally generated ambient loop (Web Audio
+// oscillators), so there's no external audio file or network fetch involved.
+// ---------------------------------------------------------------------
+let audioCtx = null;
+let musicMasterGain = null;
+let musicOn = true;
+let musicTimer = null;
+const MUSIC_CHORD_LOOP = [
+  [261.63, 329.63, 392.00],  // C major
+  [293.66, 349.23, 440.00],  // D minor
+  [220.00, 261.63, 329.63],  // A minor
+  [246.94, 311.13, 392.00],  // B dim-ish / G
+];
+let musicChordIdx = 0;
+
+function initAudio(){
+  if(audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  musicMasterGain = audioCtx.createGain();
+  musicMasterGain.gain.value = musicOn ? 0.12 : 0;
+  musicMasterGain.connect(audioCtx.destination);
+  playMusicStep();
+}
+
+function playMusicStep(){
+  if(!audioCtx) return;
+  const chord = MUSIC_CHORD_LOOP[musicChordIdx % MUSIC_CHORD_LOOP.length];
+  const now = audioCtx.currentTime;
+  chord.forEach((freq, i)=>{
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = i===0 ? 'triangle' : 'sine';
+    osc.frequency.value = freq;
+    const peak = i===0 ? 0.22 : 0.11;
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(peak, now+0.4);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now+3.6);
+    osc.connect(gain);
+    gain.connect(musicMasterGain);
+    osc.start(now);
+    osc.stop(now+3.8);
+  });
+  musicChordIdx++;
+  musicTimer = setTimeout(playMusicStep, 3400);
+}
+
+function toggleMusic(){
+  musicOn = !musicOn;
+  if(!audioCtx) initAudio();
+  if(musicMasterGain){
+    musicMasterGain.gain.value = musicOn ? 0.12 : 0;
+  }
+  document.getElementById('musicToggleBtn').textContent = musicOn ? '🔊 Music On' : '🔇 Music Off';
+}
+document.getElementById('musicToggleBtn').addEventListener('click', toggleMusic);
+
+document.getElementById('startBtn').addEventListener('click', ()=>{
+  overlay.style.display = 'none';
+  initAudio(); // audio contexts need a user gesture to start — this click provides it
+});
+
+// ---------------------------------------------------------------------
+// Boarding: swap between the small prop plane and the big passenger jet
+// whenever the player is taxiing near a terminal gate.
+// ---------------------------------------------------------------------
+let nearGate = null;
+const _camOffsetExt_holder = { v: specs.camExt.clone() };
+const _camOffsetInt_holder = { v: specs.camInt.clone() };
+
+function switchPlaneModel(type){
+  if(type === currentModel) return;
+  const oldPos = plane.position.clone();
+  const oldQuat = plane.quaternion.clone();
+  const oldProp = plane.userData.propGroup;
+
+  scene.remove(plane);
+  const newPlane = (type === 'jet') ? buildPassengerPlane() : buildPlane();
+  newPlane.position.copy(oldPos);
+  newPlane.quaternion.copy(oldQuat);
+  scene.add(newPlane);
+  plane = newPlane;
+
+  currentModel = type;
+  specs = PLANE_SPECS[type];
+  _camOffsetExt_holder.v = specs.camExt.clone();
+  _camOffsetInt_holder.v = specs.camInt.clone();
+
+  // Re-settle onto the ground using the new aircraft's gear height so it doesn't clip or float.
+  if(state.grounded){
+    const groundY = heightAt(plane.position.x, plane.position.z);
+    plane.position.y = groundY + specs.gearHeight;
+  }
+  state.speed = Math.min(state.speed, specs.maxSpeed*0.4);
+  prevGroundSpeed = state.speed;
+  state.wingBroken = null;
+  wingBrokenBannerEl.classList.remove('show');
+  document.getElementById('hudModel').textContent = specs.label;
+  document.getElementById('jetSwitchBtn').textContent = (type === 'jet')
+    ? '✈ Switch to Prop Plane'
+    : '✈ Switch to Passenger Jet';
+}
+
+document.getElementById('jetSwitchBtn').addEventListener('click', ()=>{
+  // Instant switch from anywhere on the map — no need to be near a gate.
+  switchPlaneModel(currentModel === 'small' ? 'jet' : 'small');
+});
+
+function tryBoardToggle(){
+  if(!nearGate || !state.grounded) return;
+  switchPlaneModel(currentModel === 'small' ? 'jet' : 'small');
+}
+
+function updateBoardingPrompt(){
+  nearGate = null;
+  for(const g of gates){
+    const d = Math.hypot(plane.position.x-g.pos.x, plane.position.z-g.pos.z);
+    if(d < GATE_RADIUS){ nearGate = g; break; }
+  }
+  const promptEl = document.getElementById('boardPrompt');
+  if(nearGate && state.grounded){
+    promptEl.style.display = 'block';
+    const gateLabel = nearGate.airportName + ' Gate ' + nearGate.gateNumber;
+    promptEl.innerHTML = (currentModel === 'small')
+      ? 'Press <b>B</b> to board the Passenger Jet — ' + gateLabel
+      : 'Press <b>B</b> to return to your Prop Plane — ' + gateLabel;
+  } else {
+    promptEl.style.display = 'none';
+  }
+}
+
+// ---------------------------------------------------------------------
+// Route system — you're always assigned one of the 15 gates (3 airports ×
+// 5 gates) as a destination. The HUD shows which airport/gate, the distance,
+// and a bearing; a gold star marker on the compass points the way. Taxi up
+// to that specific gate to complete the route and get a new one.
+// ---------------------------------------------------------------------
+let currentRoute = null;
+const hudRouteDestEl = document.getElementById('hudRouteDest');
+const hudRouteDistEl = document.getElementById('hudRouteDist');
+const hudRouteBearingEl = document.getElementById('hudRouteBearing');
+
+function pickNewRoute(excludeGate){
+  let candidates = gates;
+  if(excludeGate){
+    candidates = gates.filter(g => !(g.airportIdx === excludeGate.airportIdx && g.gateNumber === excludeGate.gateNumber));
+  }
+  currentRoute = candidates[Math.floor(Math.random()*candidates.length)];
+  hudRouteDestEl.textContent = currentRoute.airportName + ' – Gate ' + currentRoute.gateNumber;
+  updateGateVisibility();
+}
+
+function updateGateVisibility(){
+  gateDecor.forEach(gd=>{
+    const isRouteGate = currentRoute && gd.airportIdx === currentRoute.airportIdx && gd.gateNumber === currentRoute.gateNumber;
+    gd.airlinerGroup.visible = !isRouteGate;
+    gd.walkers.forEach(wk => { wk.mesh.visible = !isRouteGate; });
+  });
+}
+
+function updateRouteProgress(){
+  if(!currentRoute) return;
+  const dx = currentRoute.pos.x - plane.position.x;
+  const dz = currentRoute.pos.z - plane.position.z;
+  const dist = Math.hypot(dx,dz);
+  hudRouteDistEl.textContent = Math.round(dist) + ' m';
+
+  const heading = Math.atan2(_forward.x, -_forward.z);
+  const bearing = Math.atan2(dx, -dz);
+  let rel = (bearing - heading) * 180/Math.PI;
+  rel = ((rel % 360) + 360) % 360;
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  const dirIdx = Math.round(rel/45) % 8;
+  hudRouteBearingEl.textContent = dirs[dirIdx] + ' (' + Math.round(rel) + '°)';
+
+  if(dist < GATE_RADIUS && state.grounded){
+    showRouteToast('ROUTE COMPLETE — ' + currentRoute.airportName + ' Gate ' + currentRoute.gateNumber + '!');
+    pickNewRoute(currentRoute);
+  }
+}
+
+// ---------------------------------------------------------------------
+// In-flight emergency minigame — roughly a 1-in-7 chance of a malfunction
+// on any given takeoff. If it triggers, the player is forced into the
+// cockpit view and has to solve a small math problem by dialing a gauge
+// to the right value using the arrow keys before the timer runs out.
+// Failing to solve it in time crashes the plane.
+// ---------------------------------------------------------------------
+let emergencyState = null;      // null, or {question, target, value, timeLeft, maxTime, prevCameraMode}
+let emergencyScheduledIn = null; // seconds of flight time remaining until an emergency fires (this takeoff only)
+
+const emgOverlayEl = document.getElementById('emergencyOverlay');
+const emgQuestionEl = document.getElementById('emgQuestion');
+const emgValueEl = document.getElementById('emgValue');
+const emgTimerBarEl = document.getElementById('emgTimerBar');
+
+function rollEmergencyForThisFlight(){
+  emergencyScheduledIn = (Math.random() < 1/7) ? (8 + Math.random()*22) : null;
+}
+
+function startEmergency(){
+  if(emergencyState || crashCooldown > 0) return;
+  const a = 6 + Math.floor(Math.random()*24);
+  const b = 6 + Math.floor(Math.random()*24);
+  const isAdd = Math.random() < 0.5;
+  const hi = Math.max(a,b), lo = Math.min(a,b);
+  const question = isAdd ? (a+' + '+b) : (hi+' - '+lo);
+  const target = isAdd ? (a+b) : (hi-lo);
+  const startValue = clamp(target + (Math.random()<0.5?-1:1)*(5+Math.floor(Math.random()*8)), 0, 999);
+
+  emergencyState = {
+    question, target,
+    value: startValue,
+    timeLeft: 15,
+    maxTime: 15,
+    prevCameraMode: state.cameraMode
+  };
+
+  state.cameraMode = 'interior';
+  document.getElementById('cockpitFrame').style.display = 'block';
+  document.getElementById('hudCamera').textContent = 'Interior';
+  emgOverlayEl.style.display = 'flex';
+  updateEmergencyUI();
+}
+
+function updateEmergencyUI(){
+  if(!emergencyState) return;
+  emgQuestionEl.textContent = 'PRESSURE TARGET: ' + emergencyState.question + ' = ?';
+  emgValueEl.textContent = emergencyState.value;
+  emgTimerBarEl.style.width = (clamp01(emergencyState.timeLeft/emergencyState.maxTime)*100) + '%';
+}
+
+function adjustEmergencyValue(delta){
+  if(!emergencyState) return;
+  emergencyState.value = clamp(emergencyState.value + delta, 0, 999);
+  updateEmergencyUI();
+  if(emergencyState.value === emergencyState.target){
+    resolveEmergency(true);
+  }
+}
+
+function resolveEmergency(success){
+  if(!emergencyState) return;
+  const prevMode = emergencyState.prevCameraMode;
+  emergencyState = null;
+  emgOverlayEl.style.display = 'none';
+  if(success){
+    state.cameraMode = prevMode;
+    document.getElementById('cockpitFrame').style.display = (prevMode==='interior') ? 'block' : 'none';
+    document.getElementById('hudCamera').textContent = (prevMode==='interior') ? 'Interior' : 'Exterior';
+  } else {
+    handleCrash();
+  }
+}
+
+document.getElementById('emgUpBtn').addEventListener('click', ()=>adjustEmergencyValue(1));
+document.getElementById('emgDownBtn').addEventListener('click', ()=>adjustEmergencyValue(-1));
+document.getElementById('emgRightBtn').addEventListener('click', ()=>adjustEmergencyValue(5));
+document.getElementById('emgLeftBtn').addEventListener('click', ()=>adjustEmergencyValue(-5));
+
+// ---------------------------------------------------------------------
+// Engine failure — a separate, independent malfunction from the pressure-gauge
+// one above (its own ~1-in-7 roll each takeoff). When it fires, the aircraft
+// rolls hard toward one side as if it's lost an engine, and the roll control
+// (Q/E) is cut out, so the player can't just bank back level — they have to
+// manage the descent with pitch/yaw/throttle and get the plane down (on a
+// runway, or as a last resort the river) before it rolls over completely.
+// ---------------------------------------------------------------------
+let engineFailureScheduledIn = null; // seconds of flight time remaining until it fires (this takeoff only)
+const engineFailBannerEl = document.getElementById('engineFailBanner');
+
+function rollEngineFailureForThisFlight(){
+  engineFailureScheduledIn = (Math.random() < 1/7) ? (8 + Math.random()*22) : null;
+}
+
+function startEngineFailure(){
+  if(state.engineFailure || crashCooldown > 0 || emergencyState) return;
+  state.engineFailure = true;
+  state.engineFailureDir = Math.random() < 0.5 ? -1 : 1;
+  engineFailBannerEl.classList.add('show');
+}
+
+function resolveEngineFailure(){
+  state.engineFailure = false;
+  hideEngineFailBanner();
+}
+function hideEngineFailBanner(){
+  engineFailBannerEl.classList.remove('show');
+}
+
+// ---------------------------------------------------------------------
+// Wing damage — if only a wingtip clips an obstacle (not the fuselage), that wing
+// snaps off instead of an outright crash. It disables roll control on that side
+// (like an engine failure) and forces a lean, so the player has to get down fast.
+// ---------------------------------------------------------------------
+const wingBrokenBannerEl = document.getElementById('wingBrokenBanner');
+
+function breakWing(side){
+  if(state.wingBroken || crashCooldown > 0) return;
+  const wm = plane.userData.wingMeshes;
+  const entry = wm && wm[side];
+  if(entry){
+    if(entry.wing){ entry.wing.visible = false; if(entry.winglet) entry.winglet.visible = false; }
+    else { entry.visible = false; if(entry.userData && entry.userData.stripe) entry.userData.stripe.visible = false; }
+  }
+  state.wingBroken = side;
+  state.wingBrokenDir = (side === 'R') ? 1 : -1;
+  wingBrokenBannerEl.classList.add('show');
+}
+function resetWings(){
+  const wm = plane.userData.wingMeshes;
+  if(wm){
+    for(const side of ['L','R']){
+      const entry = wm[side];
+      if(!entry) continue;
+      if(entry.wing){ entry.wing.visible = true; if(entry.winglet) entry.winglet.visible = true; }
+      else { entry.visible = true; if(entry.userData && entry.userData.stripe) entry.userData.stripe.visible = true; }
+    }
+  }
+  state.wingBroken = null;
+  wingBrokenBannerEl.classList.remove('show');
+}
+// True while any in-flight emergency (engine failure or wing damage) is in progress —
+// used to hide the butter meter and to allow an emergency river ditching.
+function inEmergency(){
+  return state.engineFailure || !!state.wingBroken;
+}
+
+// ---------------------------------------------------------------------
+// Crosswind — a ~1-in-5 chance, rolled fresh each takeoff, of gusty crosswind
+// during the eventual landing. While active (low altitude, still airborne),
+// a steady sideways force leans/drifts the aircraft; the player has to bank
+// and yaw against it to stay lined up and touch down under control.
+// ---------------------------------------------------------------------
+const CROSSWIND_ALT = 55;       // altitude AGL below which the crosswind kicks in
+const CROSSWIND_ROLL = 0.22;    // rad/s of steady roll bias
+const CROSSWIND_DRIFT = 3.2;    // m/s of sideways drift
+const crosswindBannerEl = document.getElementById('crosswindBanner');
+
+function rollCrosswindForThisFlight(){
+  state.crosswindThisFlight = Math.random() < 1/5;
+  state.crosswindDir = Math.random() < 0.5 ? -1 : 1;
+}
+function hideCrosswindBanner(){
+  state.crosswindActive = false;
+  crosswindBannerEl.classList.remove('show');
+}
+
+// ---------------------------------------------------------------------
+// Crash fire effect — a small flickering flame + rising smoke left behind
+// at the crash site.
+// ---------------------------------------------------------------------
+const activeFires = [];
+function spawnFireEffect(pos){
+  const group = new THREE.Group();
+  group.position.copy(pos);
+  group.position.y = Math.max(group.position.y, heightAt(pos.x,pos.z));
+
+  const flameMatA = new THREE.MeshStandardMaterial({ color:0xff5a1f, emissive:0xff3d00, emissiveIntensity:1.6, flatShading:true, transparent:true, opacity:0.95 });
+  const flameMatB = new THREE.MeshStandardMaterial({ color:0xffc23f, emissive:0xff9d00, emissiveIntensity:1.3, flatShading:true, transparent:true, opacity:0.9 });
+  for(let i=0;i<7;i++){
+    const h = 2.2 + Math.random()*2.6;
+    const flameGeo = new THREE.ConeGeometry(0.7+Math.random()*0.6, h, 6);
+    const flame = new THREE.Mesh(flameGeo, (i%2===0)?flameMatA:flameMatB);
+    flame.position.set((Math.random()-0.5)*3.4, h/2, (Math.random()-0.5)*3.4);
+    flame.userData.baseY = flame.position.y;
+    flame.userData.phase = Math.random()*10;
+    group.add(flame);
+  }
+  const smokeMat = new THREE.MeshStandardMaterial({ color:0x1c1c1c, transparent:true, opacity:0.55, flatShading:true });
+  for(let i=0;i<5;i++){
+    const smokeGeo = new THREE.SphereGeometry(1.1+Math.random()*1.1, 6, 5);
+    const smoke = new THREE.Mesh(smokeGeo, smokeMat.clone());
+    smoke.position.set((Math.random()-0.5)*3.4, 3.5+Math.random()*2, (Math.random()-0.5)*3.4);
+    smoke.userData.rise = 1.4 + Math.random()*1.2;
+    group.add(smoke);
+  }
+  const fireLight = new THREE.PointLight(0xff6a1f, 3.2, 45);
+  fireLight.position.set(0,2.5,0);
+  group.add(fireLight);
+
+  scene.add(group);
+  activeFires.push({ group, life:0, maxLife:6, light:fireLight });
+}
+
+function updateFires(dt){
+  for(let i=activeFires.length-1;i>=0;i--){
+    const f = activeFires[i];
+    f.life += dt;
+    f.group.children.forEach(c=>{
+      if(c.userData.phase !== undefined){
+        c.position.y = c.userData.baseY + Math.sin((f.life+c.userData.phase)*11)*0.18;
+        const s = 1 + Math.sin((f.life+c.userData.phase)*15)*0.15;
+        c.scale.set(s,1,s);
+      } else if(c.userData.rise !== undefined){
+        c.position.y += c.userData.rise*dt;
+        if(c.material && c.material.opacity !== undefined){
+          c.material.opacity = Math.max(0, c.material.opacity - dt*0.09);
+        }
+      }
+    });
+    if(f.light){
+      f.light.intensity = 2.4 + Math.sin(f.life*20)*0.8;
+    }
+    if(f.life > f.maxLife){
+      scene.remove(f.group);
+      activeFires.splice(i,1);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------
+// Boarding passengers — walk back and forth along the jet bridge at every
+// gate that still has its decorative airliner visible.
+// ---------------------------------------------------------------------
+function updateWalkers(elapsed){
+  gateDecor.forEach(gd=>{
+    if(!gd.airlinerGroup.visible) return;
+    gd.walkers.forEach(wk=>{
+      const cycle = (elapsed*0.12 + wk.phase) % 2;
+      const walkT = cycle < 1 ? cycle : 2 - cycle; // ping-pong 0..1..0
+      const localX = 101 + walkT*11; // terminal-side (~101) to the airliner door (~112)
+      wk.mesh.position.set(localX, Math.abs(Math.sin(elapsed*6+wk.phase))*0.06, wk.zOff + wk.laneOffset);
+      wk.mesh.rotation.y = (cycle < 1) ? Math.PI/2 : -Math.PI/2;
+    });
+  });
+}
+
+// ---------------------------------------------------------------------
+// Obstacle collisions — hangars, ATC towers, the terminal building, and
+// parked airliners are solid; flying/taxiing into one crashes the plane.
+// ---------------------------------------------------------------------
+function hitsObstacle(px,py,pz, o, extraRadius){
+  const dx = px-o.pos.x, dz = pz-o.pos.z;
+  if(o.vertical){
+    // Cylinder check: horizontal distance vs radius, plus a vertical range — this is what
+    // lets a plane clip the *upper* floors of a tall building/bridge tower, not just its base.
+    if(py < o.vertical.minY - extraRadius || py > o.vertical.maxY + extraRadius) return false;
+    const r = o.radius + extraRadius;
+    return (dx*dx+dz*dz) < r*r;
+  }
+  const dy = py-o.pos.y;
+  const r = o.radius + extraRadius;
+  return (dx*dx+dy*dy+dz*dz) < r*r;
+}
+
+function checkObstacleCollisions(){
+  if(crashCooldown > 0) return;
+  const planeRadius = (currentModel === 'jet') ? 9 : 3;
+  const wingRadius = (currentModel === 'jet') ? 2.5 : 1.2;
+
+  // Fuselage/center collision — always fatal, regardless of what got hit.
+  for(const o of obstacles){
+    if(o.gateRef && currentRoute && o.gateRef.airportIdx === currentRoute.airportIdx && o.gateRef.gateNumber === currentRoute.gateNumber) continue;
+    if(hitsObstacle(plane.position.x, plane.position.y, plane.position.z, o, planeRadius)){
+      handleCrash();
+      return;
+    }
+  }
+
+  // Wingtip collision — a graze on just the wingtip (fuselage clear, checked above) snaps
+  // that wing off instead of an outright crash.
+  _tmpVec2.set(1,0,0).applyQuaternion(plane.quaternion);
+  const tipR = _tmpVec3.copy(plane.position).addScaledVector(_tmpVec2, specs.wingHalf);
+  const tipL = _tmpVec4.copy(plane.position).addScaledVector(_tmpVec2, -specs.wingHalf);
+  for(const o of obstacles){
+    if(o.gateRef && currentRoute && o.gateRef.airportIdx === currentRoute.airportIdx && o.gateRef.gateNumber === currentRoute.gateNumber) continue;
+    if(state.wingBroken !== 'R' && hitsObstacle(tipR.x, tipR.y, tipR.z, o, wingRadius)){ breakWing('R'); return; }
+    if(state.wingBroken !== 'L' && hitsObstacle(tipL.x, tipL.y, tipL.z, o, wingRadius)){ breakWing('L'); return; }
+  }
+}
+
+// ---------------------------------------------------------------------
+// Crash handling
+// ---------------------------------------------------------------------
+const crashMsgEl = document.getElementById('crashMsg');
+const landingToastEl = document.getElementById('landingToast');
+const routeToastEl = document.getElementById('routeToast');
+
+function showLandingToast(score){
+  let label;
+  if(score < 0.5) label = 'BUTTER! ';
+  else if(score < 1.5) label = 'Smooth ';
+  else if(score < 2.5) label = 'Firm ';
+  else if(score < 3.5) label = 'Hard ';
+  else label = 'Rough ';
+  landingToastEl.textContent = label + score.toFixed(1);
+  landingToastEl.classList.add('show');
+  clearTimeout(landingToastEl._hideTimer);
+  landingToastEl._hideTimer = setTimeout(()=>{ landingToastEl.classList.remove('show'); }, 2400);
+}
+
+function showRouteToast(text){
+  routeToastEl.textContent = text;
+  routeToastEl.classList.add('show');
+  clearTimeout(routeToastEl._hideTimer);
+  routeToastEl._hideTimer = setTimeout(()=>{ routeToastEl.classList.remove('show'); }, 2400);
+}
+let crashCooldown = 0;
+function handleCrash(){
+  if(crashCooldown > 0) return;
+  crashCooldown = 2.5;
+  spawnFireEffect(plane.position.clone());
+  crashMsgEl.classList.add('show');
+  setTimeout(()=>{ crashMsgEl.classList.remove('show'); }, 1600);
+  if(emergencyState){
+    emergencyState = null;
+    emgOverlayEl.style.display = 'none';
+  }
+  emergencyScheduledIn = null;
+  engineFailureScheduledIn = null;
+  spawnAtHome();
+}
+
+// ---------------------------------------------------------------------
+// Update loop helpers
+// ---------------------------------------------------------------------
+const _forward = new THREE.Vector3();
+const _velocity = new THREE.Vector3();
+const _tmpVec = new THREE.Vector3();
+const _tmpVec2 = new THREE.Vector3();
+const _tmpVec3 = new THREE.Vector3();
+const _tmpVec4 = new THREE.Vector3();
+const _lookTarget = new THREE.Vector3();
+const _upAxis = new THREE.Vector3(0,1,0);
+
+function clamp01(v){ return Math.max(0, Math.min(1, v)); }
+function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+function lerp(a,b,t){ return a + (b-a)*t; }
+
+function updateInput(dt){
+  // Pitch: W = nose down, S = nose up
+  let pitchIn = 0;
+  if(keys['KeyW']) pitchIn -= 1;
+  if(keys['KeyS']) pitchIn += 1;
+
+  // Turning: A = turn left, D = turn right — this is the primary steering control (yaw)
+  let yawIn = 0;
+  if(keys['KeyA']) yawIn += 1;
+  if(keys['KeyD']) yawIn -= 1;
+
+  // Roll: Q = bank left, E = bank right — cut out if a wing has broken off or an engine
+  // has failed; either way the plane leans hard to one side no matter what you press, and
+  // the only way to influence attitude is pitch/yaw/throttle while you get it down.
+  let rollIn = 0;
+  if(state.wingBroken){
+    rollIn = state.wingBrokenDir * 0.95;
+  } else if(state.engineFailure){
+    rollIn = state.engineFailureDir * 0.85;
+  } else {
+    if(keys['KeyQ']) rollIn += 1;
+    if(keys['KeyE']) rollIn -= 1;
+    if(state.crosswindActive) rollIn += state.crosswindDir * 0.35; // gust pushing a wing down — counter-steer to hold it off
+  }
+
+  // Throttle: R or Shift = up, F or Ctrl = down
+  let throttleIn = 0;
+  if(keys['KeyR'] || keys['ShiftLeft'] || keys['ShiftRight']) throttleIn += 1;
+  if(keys['KeyF'] || keys['ControlLeft'] || keys['ControlRight']) throttleIn -= 1;
+
+  const smooth = clamp01(dt*5);
+  const yawSmooth = clamp01(dt*9); // turning responds noticeably faster/snappier than pitch/roll
+  state.pitchRate = lerp(state.pitchRate, pitchIn*specs.pitchMaxRate, smooth);
+  state.rollRate  = lerp(state.rollRate,  rollIn*specs.rollMaxRate,  smooth);
+  state.yawRate   = lerp(state.yawRate,   yawIn*specs.yawMaxRate,   yawSmooth);
+
+  state.throttle = clamp(state.throttle + throttleIn*specs.throttleRate*dt, -0.4, 1);
+
+  // Animate the elevator/flap surfaces on the tail to match pitch input (visual only) —
+  // nose down (W) deflects them one way, nose up (S) the other.
+  const flapTarget = clamp(-pitchIn, -1, 1) * 0.5;
+  if(plane.userData.flapSurfaces){
+    for(const f of plane.userData.flapSurfaces) f.rotation.x = lerp(f.rotation.x, flapTarget, smooth);
+  }
+
+  // While grounded, pitch/roll input has no aerodynamic effect yet — decay it back to
+  // zero so the aircraft doesn't "remember" a pitch/roll rate the instant it lifts off,
+  // and (more importantly) so the model stays level and never clips into the runway.
+  if(state.grounded){
+    state.pitchRate = lerp(state.pitchRate, 0, smooth);
+    state.rollRate = lerp(state.rollRate, 0, smooth);
+  }
+}
+
+const FLARE_ALT = 9; // altitude (m) at which auto-level "flare" assist starts easing wings/nose level
+const _levelQuat = new THREE.Quaternion();
+
+// How high the aircraft needs to climb after leaving the ground before ground-contact
+// (landing/crash) checks turn back on. Without this, the plane can leave the runway at
+// almost exactly ground height with ~0 vertical speed, which would otherwise immediately
+// re-trigger the landing check on the very next frame — bouncing it back onto the runway
+// and scoring a phantom butter-meter reading on what was actually a takeoff.
+const DEPARTURE_CLEAR_ALT = 25;
+let prevGroundSpeed = 0; // last grounded-frame speed, used to detect a genuine takeoff-speed crossing
+
+function updateFlight(dt){
+  if(!state.grounded){
+    // Apply rotations around the plane's LOCAL axes — only while airborne, so taxiing
+    // aircraft can't bank or pitch into the terrain/runway.
+    plane.rotateX(state.pitchRate*dt); // pitch (lateral/wing axis)
+    plane.rotateZ(state.rollRate*dt);  // roll (longitudinal/fuselage axis)
+  }
+  plane.rotateY(state.yawRate*dt);   // yaw (vertical axis) — steers on the ground too
+
+  // Forward vector (nose points to local -Z)
+  _forward.set(0,0,-1).applyQuaternion(plane.quaternion);
+
+  // Auto-level "flare" assist: as the aircraft gets close to the ground, gently ease any
+  // bank/pitch back toward level (keeping the current heading). This is what a real landing
+  // flare does, and it means the aircraft is already close to level by touchdown instead of
+  // being allowed to hit the runway banked/pitched and then getting an abrupt correction —
+  // which is what was causing the wheels to visibly clip through the runway and "snap" upright.
+  if(!state.grounded){
+    const groundYNow = heightAt(plane.position.x, plane.position.z);
+    const altAGL = plane.position.y - groundYNow;
+    if(altAGL < FLARE_ALT){
+      const closeness = clamp01(1 - Math.max(altAGL,0)/FLARE_ALT);
+      const yawNow = Math.atan2(-_forward.x, -_forward.z);
+      _levelQuat.setFromAxisAngle(_upAxis, yawNow);
+      plane.quaternion.slerp(_levelQuat, clamp01(closeness*dt*6));
+      _forward.set(0,0,-1).applyQuaternion(plane.quaternion); // refresh after the correction
+    }
+  }
+
+  // Speed approaches throttle target with lag (simple thrust/drag model).
+  // Negative throttle (held past idle) gives reverse thrust for backing up while taxiing —
+  // it has no effect in the air, where speed can't go negative.
+  let targetSpeed = state.throttle * specs.maxSpeed;
+  if(!state.grounded) targetSpeed = Math.max(0, targetSpeed);
+  state.speed = lerp(state.speed, targetSpeed, clamp01(dt*1.1));
+
+  // Spin propeller based on throttle (jet has no propeller); never spins backwards visually
+  if(plane.userData.propGroup){
+    plane.userData.propGroup.rotation.z += (2 + Math.max(0,state.throttle)*45) * dt;
+  }
+
+  if(state.grounded){
+    // --- TAXI / RUNWAY MODE ---
+    // Move along the ground using only the horizontal component of the forward vector.
+    _tmpVec.set(_forward.x, 0, _forward.z);
+    if(_tmpVec.lengthSq() > 0.0001) _tmpVec.normalize();
+    plane.position.addScaledVector(_tmpVec, state.speed*dt);
+
+    // Stick to the terrain height while taxiing (no gravity/stall physics on the ground).
+    const groundY = heightAt(plane.position.x, plane.position.z);
+    plane.position.y = groundY + specs.gearHeight;
+
+    // Take off only when speed crosses the takeoff threshold from below (a genuine
+    // "rising edge"), not just whenever it happens to be above it. Landing speed is
+    // usually already above this threshold, so without this check touching down would
+    // instantly re-trigger takeoff on the very same frame.
+    const takeoffEdge = prevGroundSpeed <= specs.takeoffSpeed && state.speed > specs.takeoffSpeed;
+    if(takeoffEdge){
+      state.grounded = false;
+      state.phase = 'departing';
+      rollEmergencyForThisFlight();
+      rollEngineFailureForThisFlight();
+      rollCrosswindForThisFlight();
+    }
+    prevGroundSpeed = state.speed;
+    return;
+  }
+
+  // --- AIRBORNE MODE ---
+  _velocity.copy(_forward).multiplyScalar(state.speed);
+  if(state.speed < specs.stallSpeed){
+    const deficit = specs.stallSpeed - state.speed;
+    _velocity.y -= deficit*1.3;
+  }
+
+  plane.position.addScaledVector(_velocity, dt);
+
+  const groundY = heightAt(plane.position.x, plane.position.z);
+  const altAGL = plane.position.y - groundY;
+
+  // Departure mode: just after liftoff, ground-contact checks are held off until the
+  // aircraft has actually climbed clear of the runway (see DEPARTURE_CLEAR_ALT above).
+  if(state.phase === 'departing'){
+    if(altAGL > DEPARTURE_CLEAR_ALT) state.phase = 'airborne';
+    return;
+  }
+
+  // Crosswind: on the ~1-in-5 flights it was rolled for, it kicks in once low enough to
+  // be "on approach" and pushes/leans the aircraft to one side until you land or climb
+  // back out of range.
+  if(state.crosswindThisFlight){
+    if(altAGL < CROSSWIND_ALT){
+      if(!state.crosswindActive){ state.crosswindActive = true; crosswindBannerEl.classList.add('show'); }
+      _tmpVec2.set(1,0,0).applyQuaternion(plane.quaternion); // plane's right vector
+      plane.position.addScaledVector(_tmpVec2, state.crosswindDir*CROSSWIND_DRIFT*dt);
+    } else if(state.crosswindActive){
+      hideCrosswindBanner();
+    }
+  }
+
+  if(plane.position.y <= groundY + specs.gearHeight){
+    // Gentle, level-ish touchdown counts as a landing; anything else is a crash.
+    const impactSpeed = Math.abs(_velocity.y);
+    const softLanding = _velocity.y > -14 && state.speed < specs.maxSpeed*0.85;
+    // Butter meter: the softer the touchdown, the lower (better) the score.
+    // ~0.1 is a greaser; ~5.0 is about as hard as you can land without crashing.
+    const butterScore = clamp(0.1 + (impactSpeed/14)*4.9, 0.1, 5);
+    const onWater = isOverWater(plane.position.x, plane.position.z);
+
+    // Ditching in the river only works as a genuine emergency measure, and only with a
+    // very soft touchdown — otherwise it's a crash, same as hitting solid water anywhere
+    // outside of an emergency.
+    const waterLandingOK = onWater && inEmergency() && butterScore <= 0.3;
+
+    if(onWater && !waterLandingOK){
+      handleCrash();
+      return;
+    }
+
+    if(softLanding || waterLandingOK){
+      // The butter meter is only ever shown for a normal landing — not during an
+      // emergency (engine failure or wing damage), where the score doesn't matter,
+      // just getting down safely.
+      if(!inEmergency()) showLandingToast(butterScore);
+      if(inEmergency()){ resolveEngineFailure(); resetWings(); }
+
+      plane.position.y = groundY + specs.gearHeight;
+      state.grounded = true;
+      state.phase = 'ground';
+      hideCrosswindBanner();
+      prevGroundSpeed = state.speed; // seed so the next taxi frame doesn't see a false takeoff edge
+      emergencyScheduledIn = null; // safely on the ground, no more risk of a malfunction this leg
+      // The flare assist above should already have the aircraft nearly level; this is just a
+      // small final correction (not an abrupt full snap) so it settles cleanly onto the gear
+      // and can roll out / glide down the runway realistically instead of teleporting flat.
+      const yaw = Math.atan2(-_forward.x, -_forward.z);
+      _levelQuat.setFromAxisAngle(_upAxis, yaw);
+      plane.quaternion.slerp(_levelQuat, 0.6);
+      state.pitchRate = 0; state.rollRate = 0;
+    } else {
+      handleCrash();
+    }
+  }
+}
+
+function updateCamera(dt){
+  if(state.cameraMode === 'exterior'){
+    _tmpVec.copy(_camOffsetExt_holder.v).applyQuaternion(plane.quaternion).add(plane.position);
+    camera.position.lerp(_tmpVec, clamp01(dt*4));
+    _lookTarget.copy(plane.position).add(_tmpVec2.set(0,1.6,0));
+    camera.lookAt(_lookTarget);
+  } else {
+    _tmpVec.copy(_camOffsetInt_holder.v).applyQuaternion(plane.quaternion).add(plane.position);
+    camera.position.copy(_tmpVec);
+    camera.quaternion.copy(plane.quaternion);
+  }
+}
+
+function updateSunFollow(){
+  sun.position.set(plane.position.x+200, plane.position.y+sunFollowHeight, plane.position.z+150);
+  sun.target.position.copy(plane.position);
+  sun.target.updateMatrixWorld();
+}
+
+// ---------------------------------------------------------------------
+// HUD & compass
+// ---------------------------------------------------------------------
+const hudSpeed = document.getElementById('hudSpeed');
+const hudAlt = document.getElementById('hudAlt');
+const hudThrottle = document.getElementById('hudThrottle');
+const throttleBar = document.getElementById('throttleBar');
+const gaugeSpeed = document.getElementById('gaugeSpeed');
+const gaugeAlt = document.getElementById('gaugeAlt');
+const gaugeThr = document.getElementById('gaugeThr');
+const compassRing = document.getElementById('compassRing');
+
+// Pre-create compass DOM elements once
+const compassLetters = ['N','E','S','W'];
+const letterEls = compassLetters.map(()=>{
+  const el = document.createElement('div');
+  el.className = 'compassLetter';
+  compassRing.appendChild(el);
+  return el;
+});
+const airportEls = AIRPORTS.map(a=>{
+  const el = document.createElement('div');
+  el.className = 'airportMarker';
+  el.style.background = '#'+a.primary.toString(16).padStart(6,'0');
+  compassRing.appendChild(el);
+  return el;
+});
+
+function updateHUD(){
+  const kt = Math.round(state.speed*3);
+  const groundY = heightAt(plane.position.x, plane.position.z);
+  const alt = Math.max(0, Math.round(plane.position.y - groundY));
+  const thr = Math.round(state.throttle*100);
+
+  hudSpeed.textContent = kt + ' kt';
+  hudAlt.textContent = alt + ' m';
+  if(thr < 0){
+    hudThrottle.textContent = 'REV ' + Math.abs(thr) + '%';
+    throttleBar.style.width = Math.min(100, Math.abs(thr)) + '%';
+    throttleBar.style.background = 'linear-gradient(90deg,#ff6a4d,#ffb037)';
+  } else {
+    hudThrottle.textContent = thr + '%';
+    throttleBar.style.width = Math.min(100, thr) + '%';
+    throttleBar.style.background = '';
+  }
+  gaugeSpeed.textContent = kt;
+  gaugeAlt.textContent = alt;
+  gaugeThr.textContent = thr;
+
+  // Heading (compass-style angle: 0 = world -Z = "north")
+  _forward.set(0,0,-1).applyQuaternion(plane.quaternion);
+  const heading = Math.atan2(_forward.x, -_forward.z);
+
+  const R = 58; // px radius inside compass circle
+  compassLetters.forEach((L, i)=>{
+    const worldAngle = i*(Math.PI/2); // N,E,S,W absolute angles
+    const rel = worldAngle - heading;
+    const x = Math.sin(rel)*R, y = -Math.cos(rel)*R;
+    const el = letterEls[i];
+    el.style.left = (75+x-6)+'px';
+    el.style.top = (75+y-8)+'px';
+    el.textContent = L;
+    el.style.color = (L==='N') ? '#ff8f8f' : '#bfe9ff';
+  });
+
+  AIRPORTS.forEach((a,i)=>{
+    const dx = a.pos.x - plane.position.x;
+    const dz = a.pos.z - plane.position.z;
+    const dist = Math.hypot(dx,dz);
+    const bearing = Math.atan2(dx, -dz);
+    const rel = bearing - heading;
+    const rr = 50;
+    const x = Math.sin(rel)*rr, y = -Math.cos(rel)*rr;
+    const el = airportEls[i];
+    el.style.left = (75+x-5)+'px';
+    el.style.top = (75+y-5)+'px';
+    el.title = a.name + ' (' + Math.round(dist) + 'm)';
+    el.style.opacity = dist < 30 ? '0.25' : '1';
+  });
+}
+
+// ---------------------------------------------------------------------
+// Main loop
+// ---------------------------------------------------------------------
+const clock = new THREE.Clock();
+spawnAtHome();
+pickNewRoute(null);
+
+function animate(){
+  requestAnimationFrame(animate);
+  let dt = Math.min(clock.getDelta(), 0.05);
+
+  if(crashCooldown > 0){
+    crashCooldown -= dt;
+  } else if(overlay.style.display === 'none'){
+    updateInput(dt);
+    updateFlight(dt);
+    checkObstacleCollisions();
+
+    // Emergency malfunction scheduling/countdown (only relevant mid-flight)
+    if(!state.grounded && emergencyScheduledIn !== null && !emergencyState){
+      emergencyScheduledIn -= dt;
+      if(emergencyScheduledIn <= 0){
+        emergencyScheduledIn = null;
+        startEmergency();
+      }
+    }
+    // Engine-failure scheduling/countdown — independent of the pressure-gauge malfunction above
+    if(state.phase === 'airborne' && engineFailureScheduledIn !== null && !state.engineFailure){
+      engineFailureScheduledIn -= dt;
+      if(engineFailureScheduledIn <= 0){
+        engineFailureScheduledIn = null;
+        startEngineFailure();
+      }
+    }
+    if(emergencyState){
+      emergencyState.timeLeft -= dt;
+      if(emergencyState.timeLeft <= 0){
+        resolveEmergency(false);
+      } else {
+        updateEmergencyUI();
+      }
+    }
+  }
+
+  updateCamera(dt);
+  updateDayNight(dt);
+  updateSunFollow();
+  updateNavLights();
+  updateHUD();
+  updateBoardingPrompt();
+  updateRouteProgress();
+  updateFires(dt);
+  updateWalkers(clock.elapsedTime);
+
+  // Drift clouds gently
+  cloudGroup.children.forEach(c=>{
+    c.position.x += c.userData.speed*dt;
+    if(c.position.x > 2200) c.position.x = -2200;
+  });
+
+  renderer.render(scene, camera);
+}
+animate();
+
+})();
+</script>
+</body>
+</html>
